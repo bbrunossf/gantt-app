@@ -9,8 +9,12 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "@react-router/node": "7.16.0",
     "@react-router/serve": "7.16.0",
+    "date-fns": "^4.4.0",
+    "frappe-gantt": "^1.2.2",
     "isbot": "^5.1.36",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -19,9 +23,11 @@
   "devDependencies": {
     "@react-router/dev": "7.16.0",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/frappe-gantt": "^0.9.0",
     "@types/node": "^22",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "prisma": "^7.8.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "vite": "^8.0.3"

@@ -1,3 +1,5 @@
+@import "../node_modules/frappe-gantt/dist/frappe-gantt.css";
+@import "./gantt-app.css";
 @import "tailwindcss";
 
 @theme {
