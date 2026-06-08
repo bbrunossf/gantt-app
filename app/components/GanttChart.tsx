@@ -32,13 +32,22 @@ export interface GanttChartProps {
 function toFrappeGanttTask(task: GanttTask) {
   return {
     id: task.id,
-    name: task.name,
+    // name: task.name,
+    name: task.barLabel || task.name,
     start: task.start,
     end: task.end,
     progress: task.progress,
     dependencies: task.dependencies,
     custom_class: task.customClass,
   };
+}
+
+/** Gera um hash do conteúdo dos dados (datas + progresso), ignorando a ordem */
+function computeDataHash(tasks: GanttTask[]): string {
+  return tasks
+    .map((t) => `${t.id}:${t.start}:${t.end}:${t.progress}`)
+    .sort()
+    .join("|");
 }
 
 // ─── View toggle buttons ──────────────────────────────────────────────────────
@@ -71,40 +80,49 @@ export default function GanttChart({
   const onTaskClickRef = useRef(onTaskClick);
   onTaskClickRef.current = onTaskClick;
 
-  // ── Track task IDs to detect structural changes (add/remove) ─────────────
+  // ── Track IDs + data hash para detectar mudanças estruturais vs. dados ──
 
-  const prevTaskIds = useRef<string>("");
+  const prevIds = useRef<string>("");
+  const prevHash = useRef<string>("");
 
   // ── Initialize / reinitialize Gantt ──────────────────────────────────────
 
   useEffect(() => {
     if (!containerRef.current || tasks.length === 0) return;
 
-    // Só recria o Gantt quando tarefas são adicionadas/removidas
-    // (mudança no conjunto de IDs), não em atualizações de dados
     const currentIds = tasks
       .map((t) => t.id)
       .sort()
       .join(",");
+    const currentHash = computeDataHash(tasks);
 
-    if (ganttRef.current && currentIds === prevTaskIds.current) {
-      // Mesmas tarefas — apenas dados atualizados (ex: datas após PATCH).
-      // O frappe-gantt já renderizou a alteração visualmente no momento
-      // do drag/redimensionamento. Não recriar a instância.
+    // IDs e dados iguais → re-render inócuo, não faz nada
+    if (
+      ganttRef.current &&
+      currentIds === prevIds.current &&
+      currentHash === prevHash.current
+    ) {
       return;
     }
-    prevTaskIds.current = currentIds;
 
-    // Mudança estrutural: limpa e recria
+    prevIds.current = currentIds;
+    prevHash.current = currentHash;
+
+    // Mudança estrutural (add/remove) ou de dados (datas/progresso) → recria
     containerRef.current.innerHTML = "";
 
     const frappeTasks = tasks.map(toFrappeGanttTask);
+
+    const minDate = new Date('2026-01-01');
+    const maxDate = new Date('2026-12-31');
 
     ganttRef.current = new Gantt(containerRef.current, frappeTasks, {
       view_mode: viewMode,
       date_format: "YYYY-MM-DD",
       readonly: readOnly,
       popup_trigger: "click",
+      infinite_padding: false,
+
 
       on_click(task: GanttTask) {
         onTaskClickRef.current?.(task);
@@ -136,6 +154,8 @@ export default function GanttChart({
 
   useEffect(() => {
     if (ganttRef.current) {
+      ganttRef.current.start = "2026-01-01";
+      ganttRef.current.end = "2026-12-31";
       ganttRef.current.change_view_mode(viewMode);
     }
   }, [viewMode]);
