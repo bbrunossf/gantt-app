@@ -1,4 +1,4 @@
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { useLoaderData, useRevalidator } from "react-router";
 import { prisma } from "../lib/prisma.server";
 import { mapProjectsToGanttTasks } from "../lib/taskMapper";
 import GanttChart from "../components/GanttChart";
@@ -14,19 +14,11 @@ export async function loader(_: Route.LoaderArgs) {
     orderBy: { createdAt: "asc" },
     include: {
       tasks: {
-        where: { parentTaskId: null },
+        orderBy: { createdAt: "asc" },
         include: {
-          predecessors: true,
-          children: {
-            include: {
-              predecessors: true,
-              children: {
-                include: {
-                  predecessors: true,
-                  children: true, // nível 3 — sem filhos adicionais
-                },
-              },
-            },
+          dependencies: {
+            where: { type: "FS" },
+            select: { predecessorId: true },
           },
         },
       },
@@ -60,8 +52,8 @@ export default function GanttPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: task.id,
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
+        start: start.toISOString(),
+        end: end.toISOString(),
       }),
     });
 

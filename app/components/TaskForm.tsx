@@ -11,23 +11,25 @@ interface ProjectOption {
 interface TaskOption {
   id: string;
   name: string;
-  wbs: string;
+}
+
+/** Alinhado com o model `Task` do Prisma schema */
+interface TaskFormData {
+  id: string;
+  name: string;
+  projectId: string;
+  start: string; // DateTime @db.Date
+  end: string; // DateTime @db.Date
+  progress: number;
+  barLabel?: string | null;
+  customClass?: string | null;
+  predecessorIds?: string[];
+  createdAt: string; // retornado pela API, não editável
 }
 
 interface TaskFormProps {
   /** Se fornecido, entra em modo de edição */
-  task?: {
-    id: string;
-    name: string;
-    description?: string | null;
-    wbs: string;
-    projectId: string;
-    parentTaskId?: string | null;
-    startDate: string;
-    endDate: string;
-    progress: number;
-    predecessorIds?: string[];
-  };
+  task?: TaskFormData;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -38,8 +40,12 @@ function toInputDate(iso: string): string {
   return iso.slice(0, 10);
 }
 
-function wbsDepth(wbs: string): number {
-  return wbs.split(".").length;
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -49,19 +55,16 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
 
   // Campos do formulário
   const [name, setName] = useState(task?.name ?? "");
-  const [description, setDescription] = useState(task?.description ?? "");
-  const [wbs, setWbs] = useState(task?.wbs ?? "");
   const [projectId, setProjectId] = useState(task?.projectId ?? "");
-  const [parentTaskId, setParentTaskId] = useState(
-    task?.parentTaskId ?? ""
+  const [start, setStart] = useState(
+    task ? toInputDate(task.start) : ""
   );
-  const [startDate, setStartDate] = useState(
-    task ? toInputDate(task.startDate) : ""
-  );
-  const [endDate, setEndDate] = useState(
-    task ? toInputDate(task.endDate) : ""
+  const [end, setEnd] = useState(
+    task ? toInputDate(task.end) : ""
   );
   const [progress, setProgress] = useState(task?.progress ?? 0);
+  const [barLabel, setBarLabel] = useState(task?.barLabel ?? "");
+  const [customClass, setCustomClass] = useState(task?.customClass ?? "");
   const [predecessorIds, setPredecessorIds] = useState<string[]>(
     task?.predecessorIds ?? []
   );
@@ -93,7 +96,6 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
   useEffect(() => {
     if (!projectId) {
       setAvailableTasks([]);
-      setParentTaskId("");
       setPredecessorIds([]);
       return;
     }
@@ -101,17 +103,13 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
     fetch(`/api/tasks?projectId=${projectId}`)
       .then((r) => r.json())
       .then((data: TaskOption[]) => {
-        // Exclui a própria tarefa em edição e seus descendentes
+        // Exclui a própria tarefa em edição
         const filtered = isEditing
           ? data.filter((t) => t.id !== task.id)
           : data;
         setAvailableTasks(filtered);
       });
   }, [projectId]);
-
-  // ── Tarefas elegíveis como pai (máx. nível 2 para respeitar 3 níveis) ──
-
-  const parentOptions = availableTasks.filter((t) => wbsDepth(t.wbs) <= 2);
 
   // ── Toggle de predecessor ───────────────────────────────────────────────
 
@@ -127,11 +125,10 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
     setError(null);
 
     if (!name.trim()) return setError("O nome é obrigatório.");
-    if (!wbs.trim()) return setError("O WBS é obrigatório.");
     if (!projectId) return setError("Selecione um projeto.");
-    if (!startDate) return setError("A data de início é obrigatória.");
-    if (!endDate) return setError("A data de término é obrigatória.");
-    if (endDate < startDate)
+    if (!start) return setError("A data de início é obrigatória.");
+    if (!end) return setError("A data de término é obrigatória.");
+    if (end < start)
       return setError("O término não pode ser anterior ao início.");
     if (progress < 0 || progress > 100)
       return setError("O progresso deve estar entre 0 e 100.");
@@ -145,13 +142,12 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
         body: JSON.stringify({
           ...(isEditing && { id: task.id }),
           name: name.trim(),
-          description: description.trim() || null,
-          wbs: wbs.trim(),
           projectId,
-          parentTaskId: parentTaskId || null,
-          startDate,
-          endDate,
+          start,
+          end,
           progress,
+          barLabel: barLabel.trim() || null,
+          customClass: customClass.trim() || null,
           predecessorIds,
         }),
       });
@@ -196,60 +192,22 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
         />
       </div>
 
-      {/* Projeto + WBS (linha dupla) */}
-      <div className="form-row">
-        <div className="form-field form-field--grow">
-          <label className="form-label" htmlFor="task-project">
-            Projeto <span className="form-required">*</span>
-          </label>
-          <select
-            id="task-project"
-            className="form-input form-select"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            disabled={saving || loadingData}
-          >
-            <option value="">Selecione…</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-field form-field--wbs">
-          <label className="form-label" htmlFor="task-wbs">
-            WBS <span className="form-required">*</span>
-          </label>
-          <input
-            id="task-wbs"
-            className="form-input"
-            type="text"
-            value={wbs}
-            onChange={(e) => setWbs(e.target.value)}
-            placeholder="Ex: 1.2.3"
-            disabled={saving}
-          />
-        </div>
-      </div>
-
-      {/* Tarefa-pai */}
+      {/* Projeto */}
       <div className="form-field">
-        <label className="form-label" htmlFor="task-parent">
-          Tarefa-pai
+        <label className="form-label" htmlFor="task-project">
+          Projeto <span className="form-required">*</span>
         </label>
         <select
-          id="task-parent"
+          id="task-project"
           className="form-input form-select"
-          value={parentTaskId}
-          onChange={(e) => setParentTaskId(e.target.value)}
-          disabled={saving || !projectId}
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          disabled={saving || loadingData}
         >
-          <option value="">Nenhuma (tarefa raiz)</option>
-          {parentOptions.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.wbs} — {t.name}
+          <option value="">Selecione…</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
             </option>
           ))}
         </select>
@@ -265,8 +223,8 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             id="task-start"
             className="form-input"
             type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
             disabled={saving}
           />
         </div>
@@ -279,9 +237,9 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             id="task-end"
             className="form-input"
             type="date"
-            value={endDate}
-            min={startDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            value={end}
+            min={start}
+            onChange={(e) => setEnd(e.target.value)}
             disabled={saving}
           />
         </div>
@@ -305,6 +263,38 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
         />
       </div>
 
+      {/* Rótulo da barra (barLabel) */}
+      <div className="form-field">
+        <label className="form-label" htmlFor="task-barLabel">
+          Rótulo na barra
+        </label>
+        <input
+          id="task-barLabel"
+          className="form-input"
+          type="text"
+          value={barLabel}
+          onChange={(e) => setBarLabel(e.target.value)}
+          placeholder="Substitui o nome no gráfico (opcional)"
+          disabled={saving}
+        />
+      </div>
+
+      {/* Classe CSS customizada (customClass) */}
+      <div className="form-field">
+        <label className="form-label" htmlFor="task-customClass">
+          Classe CSS
+        </label>
+        <input
+          id="task-customClass"
+          className="form-input"
+          type="text"
+          value={customClass}
+          onChange={(e) => setCustomClass(e.target.value)}
+          placeholder="Ex: bar-milestone"
+          disabled={saving}
+        />
+      </div>
+
       {/* Predecessoras FS */}
       {availableTasks.length > 0 && (
         <div className="form-field">
@@ -318,30 +308,20 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
                   onChange={() => togglePredecessor(t.id)}
                   disabled={saving}
                 />
-                <span>
-                  {t.wbs} — {t.name}
-                </span>
+                <span>{t.name}</span>
               </label>
             ))}
           </div>
         </div>
       )}
 
-      {/* Descrição */}
-      <div className="form-field">
-        <label className="form-label" htmlFor="task-description">
-          Descrição
-        </label>
-        <textarea
-          id="task-description"
-          className="form-input form-textarea"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Descrição opcional"
-          rows={2}
-          disabled={saving}
-        />
-      </div>
+      {/* Criado em (somente-leitura no modo edição) */}
+      {isEditing && task.createdAt && (
+        <div className="form-field">
+          <label className="form-label">Criado em</label>
+          <p className="form-static">{formatDate(task.createdAt)}</p>
+        </div>
+      )}
     </FormModal>
   );
 }

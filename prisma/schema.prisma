@@ -12,61 +12,58 @@ datasource db {
   provider = "postgresql"
 }
 
-enum DependencyType {
-  FS // Finish to Start
-  SS // Start to Start
-  FF // Finish to Finish
-  SF // Start to Finish
-}
-
+// Agrupa tarefas em projetos/cronogramas distintos
 model Project {
-  id          String   @id @default(uuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  tasks       Task[]
+
+  tasks Task[]
 }
 
 model Task {
-  id           String           @id @default(uuid())
-  // Dados básicos
-  name         String
-  description  String?
-  // Estrutura WBS
-  wbs          String
-  // Hierarquia
-  parentTaskId String?
-  parentTask   Task?            @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
-  children     Task[]           @relation("TaskHierarchy")
-  // Cronograma
-  startDate    DateTime
-  endDate      DateTime
-  // Avanço físico
-  progress     Int              @default(0)
-  // Projeto
-  projectId    String
-  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  // Dependências
-  successors   TaskDependency[] @relation("Predecessor")
-  predecessors TaskDependency[] @relation("Successor")
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id          String   @id  @default(cuid()) // Usado diretamente pelo frappe-gantt (ex: "Task 1")
+  projectId   String
+  name        String
+  start       DateTime @db.Date
+  end         DateTime @db.Date
+  progress    Float    @default(0) // 0 a 100
+  barLabel    String? // bar_label: substitui 'name' na barra do gráfico
+  customClass String? // custom_class: ex "bar-milestone"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Dependências onde esta tarefa é a sucessora (depende de outras)
+  dependencies TaskDependency[] @relation("DependencySuccessor")
+  // Dependências onde esta tarefa é a predecessora (outras dependem dela)
+  dependents   TaskDependency[] @relation("DependencyPredecessor")
 
   @@index([projectId])
-  @@index([parentTaskId])
-  @@index([wbs])
-  @@unique([projectId, wbs])
+}
+
+// Tipos de dependência suportados pelo frappe-gantt
+enum DependencyType {
+  FS // Finish-to-Start (padrão)
+  SS // Start-to-Start
+  FF // Finish-to-Finish
+  SF // Start-to-Finish
 }
 
 model TaskDependency {
+  id            String         @id @default(cuid())
+  // A tarefa que precisa ser concluída/iniciada primeiro
   predecessorId String
+  // A tarefa que depende da predecessora
   successorId   String
   type          DependencyType @default(FS)
-  lagDays       Int            @default(0)
-  predecessor   Task           @relation("Predecessor", fields: [predecessorId], references: [id])
-  successor     Task           @relation("Successor", fields: [successorId], references: [id])
-  createdAt     DateTime       @default(now())
 
-  @@id([predecessorId, successorId])
+  predecessor Task @relation("DependencyPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor   Task @relation("DependencySuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+  @@index([successorId])
 }

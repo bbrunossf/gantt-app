@@ -10,10 +10,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const tasks = await prisma.task.findMany({
     where: projectId ? { projectId } : undefined,
-    orderBy: { wbs: "asc" },
+    orderBy: { createdAt: "asc" },
     include: {
-      predecessors: true,
-      successors: true,
+      // Tarefas das quais esta depende (predecessoras)
+      dependencies: {
+        include: {
+          predecessor: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 
@@ -29,63 +33,51 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (method === "POST") {
     const body = await request.json();
-    const {
-      name,
-      description,
-      wbs,
-      projectId,
-      parentTaskId,
-      startDate,
-      endDate,
-      progress,
-    } = body as {
-      name: string;
-      description?: string;
-      wbs: string;
-      projectId: string;
-      parentTaskId?: string;
-      startDate: string;
-      endDate: string;
-      progress?: number;
-    };
+    const { name, projectId, start, end, progress, barLabel, customClass } =
+      body as {
+        name: string;
+        projectId: string;
+        start: string;
+        end: string;
+        progress?: number;
+        barLabel?: string;
+        customClass?: string;
+      };
 
     // Validações
     if (!name?.trim())
       return data({ error: "O campo 'name' é obrigatório." }, { status: 400 });
-    if (!wbs?.trim())
-      return data({ error: "O campo 'wbs' é obrigatório." }, { status: 400 });
     if (!projectId)
       return data(
         { error: "O campo 'projectId' é obrigatório." },
         { status: 400 }
       );
-    if (!startDate || !endDate)
+    if (!start || !end)
       return data(
-        { error: "Os campos 'startDate' e 'endDate' são obrigatórios." },
+        { error: "Os campos 'start' e 'end' são obrigatórios." },
         { status: 400 }
       );
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const startDate = new Date(start);
+    const endDate = new Date(end);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime()))
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()))
       return data({ error: "Datas inválidas." }, { status: 400 });
-    if (end < start)
+    if (endDate < startDate)
       return data(
-        { error: "'endDate' não pode ser anterior a 'startDate'." },
+        { error: "'end' não pode ser anterior a 'start'." },
         { status: 400 }
       );
 
     const task = await prisma.task.create({
       data: {
         name: name.trim(),
-        description: description?.trim() ?? null,
-        wbs: wbs.trim(),
         projectId,
-        parentTaskId: parentTaskId ?? null,
-        startDate: start,
-        endDate: end,
+        start: startDate,
+        end: endDate,
         progress: progress ?? 0,
+        barLabel: barLabel?.trim() || null,
+        customClass: customClass?.trim() || null,
       },
     });
 
@@ -99,24 +91,21 @@ export async function action({ request }: Route.ActionArgs) {
     const {
       id,
       name,
-      description,
-      wbs,
-      parentTaskId,
-      startDate,
-      endDate,
+      start,
+      end,
       progress,
-      // Dependências FS a sincronizar (opcional)
+      barLabel,
+      customClass,
       predecessorIds,
     } = body as {
       id: string;
       name?: string;
-      description?: string;
-      wbs?: string;
-      parentTaskId?: string | null;
-      startDate?: string;
-      endDate?: string;
+      start?: string;
+      end?: string;
       progress?: number;
-      predecessorIds?: string[]; // substitui todas as dependências FS da tarefa
+      barLabel?: string | null;
+      customClass?: string | null;
+      predecessorIds?: string[];
     };
 
     if (!id)
@@ -125,23 +114,23 @@ export async function action({ request }: Route.ActionArgs) {
     // Monta payload dinâmico — só altera campos enviados
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name.trim();
-    if (description !== undefined)
-      updateData.description = description?.trim() ?? null;
-    if (wbs !== undefined) updateData.wbs = wbs.trim();
-    if (parentTaskId !== undefined) updateData.parentTaskId = parentTaskId;
     if (progress !== undefined) updateData.progress = progress;
+    if (barLabel !== undefined)
+      updateData.barLabel = barLabel?.trim() || null;
+    if (customClass !== undefined)
+      updateData.customClass = customClass?.trim() || null;
 
-    if (startDate !== undefined) {
-      const d = new Date(startDate);
+    if (start !== undefined) {
+      const d = new Date(start);
       if (isNaN(d.getTime()))
-        return data({ error: "'startDate' inválido." }, { status: 400 });
-      updateData.startDate = d;
+        return data({ error: "'start' inválido." }, { status: 400 });
+      updateData.start = d;
     }
-    if (endDate !== undefined) {
-      const d = new Date(endDate);
+    if (end !== undefined) {
+      const d = new Date(end);
       if (isNaN(d.getTime()))
-        return data({ error: "'endDate' inválido." }, { status: 400 });
-      updateData.endDate = d;
+        return data({ error: "'end' inválido." }, { status: 400 });
+      updateData.end = d;
     }
 
     // Atualiza tarefa e, se enviado, sincroniza dependências numa transação
@@ -157,14 +146,13 @@ export async function action({ request }: Route.ActionArgs) {
           where: { successorId: id, type: "FS" },
         });
 
-        // Recria com os IDs enviados
+        // Recria com os IDs enviados (sem lagDays — não existe no schema)
         if (predecessorIds.length > 0) {
           await tx.taskDependency.createMany({
             data: predecessorIds.map((predecessorId) => ({
               predecessorId,
               successorId: id,
               type: "FS" as const,
-              lagDays: 0,
             })),
           });
         }

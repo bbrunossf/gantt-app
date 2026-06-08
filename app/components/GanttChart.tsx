@@ -1,28 +1,48 @@
 import { useEffect, useRef, useState } from "react";
 import Gantt from "frappe-gantt";
+import type { GanttTask } from "../lib/taskMapper";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type GanttViewMode = "Quarter Day" | "Half Day" | "Day" | "Week" | "Month";
-
-export interface GanttTask {
-  id: string;
-  name: string;
-  start: string;        // "YYYY-MM-DD"
-  end: string;          // "YYYY-MM-DD"
-  progress: number;     // 0–100
-  dependencies?: string; // comma-separated task ids
-  assignee?: string;
-  custom_class?: string;
-}
+export type GanttViewMode =
+  | "Quarter Day"
+  | "Half Day"
+  | "Day"
+  | "Week"
+  | "Month";
 
 export interface GanttChartProps {
   tasks: GanttTask[];
   defaultView?: GanttViewMode;
-  onDateChange?: (task: GanttTask, start: Date, end: Date) => Promise<void> | void;
-  onProgressChange?: (task: GanttTask, progress: number) => Promise<void> | void;
+  onDateChange?: (
+    task: GanttTask,
+    start: Date,
+    end: Date
+  ) => Promise<void> | void;
+  onProgressChange?: (
+    task: GanttTask,
+    progress: number
+  ) => Promise<void> | void;
   onTaskClick?: (task: GanttTask) => void;
   readOnly?: boolean;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Converte do formato do schema (camelCase) para o formato esperado
+ * pelo frappe-gantt (snake_case).
+ */
+function toFrappeGanttTask(task: GanttTask) {
+  return {
+    id: task.id,
+    name: task.name,
+    start: task.start,
+    end: task.end,
+    progress: task.progress,
+    dependencies: task.dependencies,
+    custom_class: task.customClass,
+  };
 }
 
 // ─── View toggle buttons ──────────────────────────────────────────────────────
@@ -51,7 +71,9 @@ export default function GanttChart({
     // frappe-gantt mutates the container; clear it between renders
     containerRef.current.innerHTML = "";
 
-    ganttRef.current = new Gantt(containerRef.current, tasks, {
+    const frappeTasks = tasks.map(toFrappeGanttTask);
+
+    ganttRef.current = new Gantt(containerRef.current, frappeTasks, {
       view_mode: viewMode,
       date_format: "YYYY-MM-DD",
       readonly: readOnly,
