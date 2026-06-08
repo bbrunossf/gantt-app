@@ -29,10 +29,6 @@ export interface GanttChartProps {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Converte do formato do schema (camelCase) para o formato esperado
- * pelo frappe-gantt (snake_case).
- */
 function toFrappeGanttTask(task: GanttTask) {
   return {
     id: task.id,
@@ -64,11 +60,42 @@ export default function GanttChart({
   const [viewMode, setViewMode] = useState<GanttViewMode>(defaultView);
   const [saving, setSaving] = useState(false);
 
-  // Initialise / reinitialise when tasks change
+  // ── Refs para callbacks (evita stale closure com instância persistente) ──
+
+  const onDateChangeRef = useRef(onDateChange);
+  onDateChangeRef.current = onDateChange;
+
+  const onProgressChangeRef = useRef(onProgressChange);
+  onProgressChangeRef.current = onProgressChange;
+
+  const onTaskClickRef = useRef(onTaskClick);
+  onTaskClickRef.current = onTaskClick;
+
+  // ── Track task IDs to detect structural changes (add/remove) ─────────────
+
+  const prevTaskIds = useRef<string>("");
+
+  // ── Initialize / reinitialize Gantt ──────────────────────────────────────
+
   useEffect(() => {
     if (!containerRef.current || tasks.length === 0) return;
 
-    // frappe-gantt mutates the container; clear it between renders
+    // Só recria o Gantt quando tarefas são adicionadas/removidas
+    // (mudança no conjunto de IDs), não em atualizações de dados
+    const currentIds = tasks
+      .map((t) => t.id)
+      .sort()
+      .join(",");
+
+    if (ganttRef.current && currentIds === prevTaskIds.current) {
+      // Mesmas tarefas — apenas dados atualizados (ex: datas após PATCH).
+      // O frappe-gantt já renderizou a alteração visualmente no momento
+      // do drag/redimensionamento. Não recriar a instância.
+      return;
+    }
+    prevTaskIds.current = currentIds;
+
+    // Mudança estrutural: limpa e recria
     containerRef.current.innerHTML = "";
 
     const frappeTasks = tasks.map(toFrappeGanttTask);
@@ -80,24 +107,24 @@ export default function GanttChart({
       popup_trigger: "click",
 
       on_click(task: GanttTask) {
-        onTaskClick?.(task);
+        onTaskClickRef.current?.(task);
       },
 
       async on_date_change(task: GanttTask, start: Date, end: Date) {
-        if (!onDateChange) return;
+        if (!onDateChangeRef.current) return;
         setSaving(true);
         try {
-          await onDateChange(task, start, end);
+          await onDateChangeRef.current(task, start, end);
         } finally {
           setSaving(false);
         }
       },
 
       async on_progress_change(task: GanttTask, progress: number) {
-        if (!onProgressChange) return;
+        if (!onProgressChangeRef.current) return;
         setSaving(true);
         try {
-          await onProgressChange(task, progress);
+          await onProgressChangeRef.current(task, progress);
         } finally {
           setSaving(false);
         }
@@ -105,7 +132,8 @@ export default function GanttChart({
     });
   }, [tasks]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Change view without full reinit
+  // ── Change view without full reinit ──────────────────────────────────────
+
   useEffect(() => {
     if (ganttRef.current) {
       ganttRef.current.change_view_mode(viewMode);

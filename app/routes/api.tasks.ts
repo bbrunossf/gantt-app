@@ -33,16 +33,25 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (method === "POST") {
     const body = await request.json();
-    const { name, projectId, start, end, progress, barLabel, customClass } =
-      body as {
-        name: string;
-        projectId: string;
-        start: string;
-        end: string;
-        progress?: number;
-        barLabel?: string;
-        customClass?: string;
-      };
+    const {
+      name,
+      projectId,
+      start,
+      end,
+      progress,
+      barLabel,
+      customClass,
+      predecessorIds,
+    } = body as {
+      name: string;
+      projectId: string;
+      start?: string;        // opcional se houver predecessoras
+      end: string;
+      progress?: number;
+      barLabel?: string;
+      customClass?: string;
+      predecessorIds?: string[];
+    };
 
     // Validações
     if (!name?.trim())
@@ -52,37 +61,88 @@ export async function action({ request }: Route.ActionArgs) {
         { error: "O campo 'projectId' é obrigatório." },
         { status: 400 }
       );
-    if (!start || !end)
+    if (!end)
       return data(
-        { error: "Os campos 'start' e 'end' são obrigatórios." },
+        { error: "O campo 'end' é obrigatório." },
         { status: 400 }
       );
 
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    // start é obrigatório apenas se não houver predecessoras
+    const hasPredecessors =
+      predecessorIds && predecessorIds.length > 0;
+    if (!start && !hasPredecessors)
+      return data(
+        { error: "O campo 'start' é obrigatório (ou selecione predecessoras)." },
+        { status: 400 }
+      );
 
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()))
-      return data({ error: "Datas inválidas." }, { status: 400 });
-    if (endDate < startDate)
+    // Deriva start da maior data final das predecessoras, se não informado
+    let resolvedStart: Date;
+    if (start) {
+      resolvedStart = new Date(start);
+      if (isNaN(resolvedStart.getTime()))
+        return data({ error: "'start' inválido." }, { status: 400 });
+    } else if (hasPredecessors) {
+      const preds = await prisma.task.findMany({
+        where: { id: { in: predecessorIds } },
+        select: { end: true },
+      });
+      if (preds.length === 0)
+        return data(
+          { error: "Nenhuma predecessora encontrada." },
+          { status: 400 }
+        );
+      const latestEnd = preds.reduce((max, p) =>
+        p.end > max ? p.end : max,
+        preds[0].end
+      );
+      resolvedStart = latestEnd;
+    } else {
+      return data(
+        { error: "O campo 'start' é obrigatório." },
+        { status: 400 }
+      );
+    }
+
+    const endDate = new Date(end);
+    if (isNaN(endDate.getTime()))
+      return data({ error: "'end' inválido." }, { status: 400 });
+    if (endDate < resolvedStart)
       return data(
         { error: "'end' não pode ser anterior a 'start'." },
         { status: 400 }
       );
 
-    const task = await prisma.task.create({
-      data: {
-        name: name.trim(),
-        projectId,
-        start: startDate,
-        end: endDate,
-        progress: progress ?? 0,
-        barLabel: barLabel?.trim() || null,
-        customClass: customClass?.trim() || null,
-      },
+    // Cria tarefa e dependências em uma transação
+    const task = await prisma.$transaction(async (tx) => {
+      const created = await tx.task.create({
+        data: {
+          name: name.trim(),
+          projectId,
+          start: resolvedStart,
+          end: endDate,
+          progress: progress ?? 0,
+          barLabel: barLabel?.trim() || null,
+          customClass: customClass?.trim() || null,
+        },
+      });
+
+      if (hasPredecessors) {
+        await tx.taskDependency.createMany({
+          data: predecessorIds!.map((predecessorId) => ({
+            predecessorId,
+            successorId: created.id,
+            type: "FS" as const,
+          })),
+        });
+      }
+
+      return created;
     });
 
     return data(task, { status: 201 });
   }
+
 
   // ── PATCH: editar tarefa ──────────────────────────────────────────────────
 

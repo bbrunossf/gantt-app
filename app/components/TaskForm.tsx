@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FormModal from "./FormModal";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -11,6 +11,7 @@ interface ProjectOption {
 interface TaskOption {
   id: string;
   name: string;
+  end: string; // ISO — data de término, usada para auto-preencher start
 }
 
 /** Alinhado com o model `Task` do Prisma schema */
@@ -18,17 +19,16 @@ interface TaskFormData {
   id: string;
   name: string;
   projectId: string;
-  start: string; // DateTime @db.Date
-  end: string; // DateTime @db.Date
+  start: string;
+  end: string;
   progress: number;
   barLabel?: string | null;
   customClass?: string | null;
   predecessorIds?: string[];
-  createdAt: string; // retornado pela API, não editável
+  createdAt: string;
 }
 
 interface TaskFormProps {
-  /** Se fornecido, entra em modo de edição */
   task?: TaskFormData;
   onSuccess: () => void;
   onCancel: () => void;
@@ -78,6 +78,9 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Rastreia se o usuário alterou o start manualmente
+  const startManuallySet = useRef(false);
+
   // ── Carrega projetos ao montar ──────────────────────────────────────────
 
   useEffect(() => {
@@ -85,7 +88,6 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       .then((r) => r.json())
       .then((data: ProjectOption[]) => {
         setProjects(data);
-        // Se só houver um projeto, pré-seleciona
         if (!isEditing && data.length === 1) setProjectId(data[0].id);
       })
       .finally(() => setLoadingData(false));
@@ -103,13 +105,35 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
     fetch(`/api/tasks?projectId=${projectId}`)
       .then((r) => r.json())
       .then((data: TaskOption[]) => {
-        // Exclui a própria tarefa em edição
         const filtered = isEditing
           ? data.filter((t) => t.id !== task.id)
           : data;
         setAvailableTasks(filtered);
       });
   }, [projectId]);
+
+  // ── Auto-preencher start com base nas predecessoras ────────────────────
+
+  const hasPredecessors = predecessorIds.length > 0;
+  const derivedFromPredecessors = hasPredecessors && !startManuallySet.current;
+
+  useEffect(() => {
+    if (!hasPredecessors) return;
+    if (startManuallySet.current) return; // usuário já definiu manualmente
+
+    const selected = availableTasks.filter((t) =>
+      predecessorIds.includes(t.id)
+    );
+    if (selected.length === 0) return;
+
+    // Maior data de término entre as predecessoras
+    const latestEnd = selected.reduce((latest, t) =>
+      t.end > latest ? t.end : latest,
+      selected[0].end
+    );
+
+    setStart(toInputDate(latestEnd));
+  }, [predecessorIds, availableTasks]);
 
   // ── Toggle de predecessor ───────────────────────────────────────────────
 
@@ -126,9 +150,11 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
 
     if (!name.trim()) return setError("O nome é obrigatório.");
     if (!projectId) return setError("Selecione um projeto.");
-    if (!start) return setError("A data de início é obrigatória.");
+    // start só é obrigatório se NÃO houver predecessoras
+    if (!start && !hasPredecessors)
+      return setError("A data de início é obrigatória.");
     if (!end) return setError("A data de término é obrigatória.");
-    if (end < start)
+    if (start && end < start)
       return setError("O término não pode ser anterior ao início.");
     if (progress < 0 || progress > 100)
       return setError("O progresso deve estar entre 0 e 100.");
@@ -143,7 +169,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           ...(isEditing && { id: task.id }),
           name: name.trim(),
           projectId,
-          start,
+          start: start || undefined, // será preenchido no servidor se vier vazio
           end,
           progress,
           barLabel: barLabel.trim() || null,
@@ -217,16 +243,27 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       <div className="form-row">
         <div className="form-field form-field--grow">
           <label className="form-label" htmlFor="task-start">
-            Início <span className="form-required">*</span>
+            Início
+            {!hasPredecessors && (
+              <span className="form-required"> *</span>
+            )}
           </label>
           <input
             id="task-start"
             className="form-input"
             type="date"
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(e) => {
+              setStart(e.target.value);
+              startManuallySet.current = true;
+            }}
             disabled={saving}
           />
+          {derivedFromPredecessors && (
+            <p className="form-hint">
+              Preenchido automaticamente com base nas predecessoras
+            </p>
+          )}
         </div>
 
         <div className="form-field form-field--grow">
@@ -238,7 +275,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             className="form-input"
             type="date"
             value={end}
-            min={start}
+            min={start || undefined}
             onChange={(e) => setEnd(e.target.value)}
             disabled={saving}
           />
