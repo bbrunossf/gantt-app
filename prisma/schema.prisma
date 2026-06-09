@@ -34,6 +34,9 @@ model Task {
   customClass String? // custom_class: ex "bar-milestone"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  resource    String?  // nome da lista do Trello (ou editável manualmente)
+  trelloCardId     String?  @unique   // ID do card no Trello (nulo = tarefa manual)
+  trelloSyncStatus String?  @default("active")  // "active" | "orphaned"
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

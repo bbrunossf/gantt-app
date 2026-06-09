@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+// Frappe Gantt 1.2.x envia { task: {...} } no callback popup.
+// Não confundir com as definições antigas de @types/frappe-gantt.
+//
+import { useCallback, useEffect, useRef, useState } from "react";
 import Gantt from "frappe-gantt";
 import type { GanttTask } from "../lib/taskMapper";
+import TaskForm from "./TaskForm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +28,12 @@ export interface GanttChartProps {
     progress: number
   ) => Promise<void> | void;
   onTaskClick?: (task: GanttTask) => void;
+  /** Disparado quando o usuário cria uma dependência via popup */
+   onAddDependency?: (
+     taskId: string,
+     predecessorId: string
+   ) => Promise<void> | void;
+   onTaskUpdated: () => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -33,7 +43,7 @@ function toFrappeGanttTask(task: GanttTask) {
   return {
     id: task.id,
     // name: task.name,
-    name: task.barLabel || task.name,
+    name: task.name || task.barLabel,
     start: task.start,
     end: task.end,
     progress: task.progress,
@@ -50,6 +60,69 @@ function computeDataHash(tasks: GanttTask[]): string {
     .join("|");
 }
 
+// ─── Popup HTML builder ───────────────────────────────────────────────────────
+
+type DepEventDetail = { taskId: string };
+
+
+function buildPopupHtml(
+  popupTask: GanttTask,
+  matched: GanttTask,
+  otherTaskCount: number
+): string {
+  const safeName = matched.name
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  return `
+    <div class="gantt-custom-popup">
+      <div class="gantt-popup-header">
+        <strong>${safeName}</strong>
+      </div>
+      <div class="gantt-popup-body">
+        <div class="gantt-popup-row">
+          <span class="gantt-popup-label">Início:</span>
+          <span>${popupTask.start}</span>
+        </div>
+        <div class="gantt-popup-row">
+          <span class="gantt-popup-label">Fim:</span>
+          <span>${popupTask.end || "-"}</span>
+        </div>
+        <div class="gantt-popup-row">
+          <span class="gantt-popup-label">Progresso:</span>
+          <span>${popupTask.progress}%</span>
+        </div>
+      </div>
+      <div class="gantt-popup-footer">
+        <button
+          class="gantt-popup-dep-btn"
+          type="button"
+          onclick="document.dispatchEvent(new CustomEvent('gantt:add-dependency',{detail:{taskId:'${matched.id}'}}))"
+        >
+          + Dependência (${otherTaskCount})
+        </button>
+
+        <button
+          class="gantt-popup-dep-btn"
+          type="button"
+          onclick="document.dispatchEvent(
+            new CustomEvent(
+              'gantt:edit-task',
+              {detail:{taskId:'${matched.id}'}}
+            )
+          )"
+        >
+          Editar tarefa
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+
+
 // ─── View toggle buttons ──────────────────────────────────────────────────────
 
 const VIEW_MODES: GanttViewMode[] = ["Day", "Week", "Month"];
@@ -62,12 +135,15 @@ export default function GanttChart({
   onDateChange,
   onProgressChange,
   onTaskClick,
+  onAddDependency,
+  onTaskUpdated,
   readOnly = false,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<InstanceType<typeof Gantt> | null>(null);
   const [viewMode, setViewMode] = useState<GanttViewMode>(defaultView);
   const [saving, setSaving] = useState(false);
+
 
   // ── Refs para callbacks (evita stale closure com instância persistente) ──
 
@@ -80,7 +156,95 @@ export default function GanttChart({
   const onTaskClickRef = useRef(onTaskClick);
   onTaskClickRef.current = onTaskClick;
 
-  // ── Track IDs + data hash para detectar mudanças estruturais vs. dados ──
+  // ── Refs para o popup customizado ──
+
+  const onAddDependencyRef = useRef(onAddDependency);
+  onAddDependencyRef.current = onAddDependency;
+  const onTaskUpdatedRef = useRef(onTaskUpdated);
+  onTaskUpdatedRef.current = onTaskUpdated;
+
+
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
+  // ── Modal de dependência ─────────────────────────────────────────────────
+
+  const [depPicker, setDepPicker] = useState<{
+    taskId: string;
+    taskName: string;
+    predecessorId: string;
+  } | null>(null);
+  const [depSaving, setDepSaving] = useState(false);
+
+  const openDepPicker = useCallback((taskId: string) => {
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (task) {
+      setDepPicker({ taskId, taskName: task.name, predecessorId: "" });
+    }
+  }, []);
+
+  const otherTasks = tasks.filter(
+    (t) => !t.id.startsWith("project-") && t.id !== depPicker?.taskId
+  );
+  const [editingTaskId, setEditingTaskId] =
+    useState<string | null>(null);
+
+  const [editingTask, setEditingTask] =
+    useState<any | null>(null);
+
+  const [loadingEditTask, setLoadingEditTask] =
+    useState(false);
+
+  // Escuta o evento customizado disparado pelo HTML do popup
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { taskId } = (e as CustomEvent<DepEventDetail>).detail;
+      openDepPicker(taskId);
+    };
+    document.addEventListener("gantt:add-dependency", handler);
+    return () => document.removeEventListener("gantt:add-dependency", handler);
+  }, [openDepPicker]);
+
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const { taskId } =
+        (e as CustomEvent<{ taskId: string }>).detail;
+
+      setLoadingEditTask(true);
+
+      try {
+        // const res = await fetch(`/api/tasks/${taskId}`);
+        const res = await fetch(`/api/tasks?id=${taskId}`);
+
+        if (!res.ok) {
+          throw new Error("Erro ao carregar tarefa");
+        }
+
+        const task = await res.json();
+
+        setEditingTask(task);
+        setEditingTaskId(taskId);
+      } catch (err) {
+        console.error(err);
+        alert("Não foi possível carregar a tarefa.");
+      } finally {
+        setLoadingEditTask(false);
+      }
+    };
+
+    document.addEventListener(
+      "gantt:edit-task",
+      handler
+    );
+
+    return () =>
+      document.removeEventListener(
+        "gantt:edit-task",
+        handler
+      );
+  }, []);
+
+  // ── Track IDs + data hash ───────────────────────────────────────────────
 
   const prevIds = useRef<string>("");
   const prevHash = useRef<string>("");
@@ -113,15 +277,48 @@ export default function GanttChart({
 
     const frappeTasks = tasks.map(toFrappeGanttTask);
 
-    const minDate = new Date('2026-01-01');
-    const maxDate = new Date('2026-12-31');
+    // const minDate = new Date('2026-01-01');
+    // const maxDate = new Date('2026-12-31');
 
     ganttRef.current = new Gantt(containerRef.current, frappeTasks, {
       view_mode: viewMode,
       date_format: "YYYY-MM-DD",
       readonly: readOnly,
-      popup_trigger: "click",
       infinite_padding: false,
+
+      popup(ctx: any) {
+        const popupTask = ctx.task;
+
+        const matched = tasksRef.current.find(
+          (t) => t.id === popupTask.id
+        );
+
+        if (!matched || matched.id.startsWith("project-")) {
+          const safeName = (popupTask.name || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+
+          return `
+            <div class="gantt-custom-popup">
+              <div class="gantt-popup-header">
+                <strong>${safeName}</strong>
+              </div>
+            </div>
+          `;
+        }
+
+        const others = tasksRef.current.filter(
+          (t) => !t.id.startsWith("project-") && t.id !== matched.id
+        );
+
+        return buildPopupHtml(
+          popupTask,
+          matched,
+          others.length
+        );
+      },
+
 
 
       on_click(task: GanttTask) {
@@ -154,11 +351,30 @@ export default function GanttChart({
 
   useEffect(() => {
     if (ganttRef.current) {
-      ganttRef.current.start = "2026-01-01";
-      ganttRef.current.end = "2026-12-31";
+
       ganttRef.current.change_view_mode(viewMode);
     }
   }, [viewMode]);
+
+
+
+  // ── Dependency submit handler ────────────────────────────────────────────
+
+  async function handleDepSubmit() {
+    if (!depPicker || !depPicker.predecessorId || !onAddDependencyRef.current)
+      return;
+    setDepSaving(true);
+    try {
+      await onAddDependencyRef.current(
+        depPicker.taskId,
+        depPicker.predecessorId
+      );
+      setDepPicker(null);
+    } finally {
+      setDepSaving(false);
+    }
+  }
+
 
   return (
     <div className="gantt-wrapper">
@@ -195,6 +411,93 @@ export default function GanttChart({
           <div ref={containerRef} className="gantt-container" />
         </div>
       )}
+
+      {/* ── Dependency Picker Modal ── */}
+      {depPicker && (
+        <div className="modal-overlay" onClick={() => setDepPicker(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">
+                Adicionar dependência — {depPicker.taskName}
+              </h2>
+              <button
+                className="modal-close"
+                onClick={() => setDepPicker(null)}
+                type="button"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p style={{ fontSize: 13, color: "var(--color-text-2)" }}>
+                Selecione a tarefa que deve ser concluída{" "}
+                <strong>antes</strong> desta:
+              </p>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="dep-predecessor">
+                  Tarefa predecessora
+                </label>
+                <select
+                  id="dep-predecessor"
+                  className="form-input form-select"
+                  value={depPicker.predecessorId}
+                  onChange={(e) =>
+                    setDepPicker((prev) =>
+                      prev ? { ...prev, predecessorId: e.target.value } : null
+                    )
+                  }
+                >
+                  <option value="">Selecione uma tarefa…</option>
+                  {otherTasks.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.start} → {t.end})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setDepPicker(null)}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleDepSubmit}
+                disabled={!depPicker.predecessorId || depSaving}
+                type="button"
+              >
+                {depSaving ? "Salvando…" : "Adicionar dependência"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingTask && (
+        <TaskForm
+          task={editingTask}
+          onCancel={() => {
+            setEditingTask(null);
+            setEditingTaskId(null);
+          }}
+          onSuccess={async () => {
+            setEditingTask(null);
+            setEditingTaskId(null);
+
+            // Atualiza os dados do gráfico
+            await onTaskUpdatedRef.current?.();
+          }}
+        />
+      )}
+
     </div>
   );
 }

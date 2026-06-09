@@ -466,3 +466,66 @@ body {
   accent-color: var(--color-primary);
   flex-shrink: 0;
 }
+
+/* ── Custom Popup (frappe-gantt) ───────────────────────────────────────────── */
+
+/* Override: aumenta a largura padrão do popup */
+.details-container {
+  min-width: 240px !important;
+  max-width: 320px !important;
+}
+
+.gantt-custom-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gantt-popup-header {
+  font-size: 14px;
+  color: var(--color-text-1);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gantt-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gantt-popup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.gantt-popup-label {
+  color: var(--color-text-3);
+  font-weight: 500;
+}
+
+.gantt-popup-footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.gantt-popup-dep-btn {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--color-primary);
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.gantt-popup-dep-btn:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}

@@ -24,6 +24,7 @@ interface TaskFormData {
   progress: number;
   barLabel?: string | null;
   customClass?: string | null;
+  resource?: string | null;
   predecessorIds?: string[];
   createdAt: string;
 }
@@ -65,6 +66,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
   const [progress, setProgress] = useState(task?.progress ?? 0);
   const [barLabel, setBarLabel] = useState(task?.barLabel ?? "");
   const [customClass, setCustomClass] = useState(task?.customClass ?? "");
+  const [resource, setResource] = useState(task?.resource ?? "");
   const [predecessorIds, setPredecessorIds] = useState<string[]>(
     task?.predecessorIds ?? []
   );
@@ -174,6 +176,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           progress,
           barLabel: barLabel.trim() || null,
           customClass: customClass.trim() || null,
+          resource: resource.trim() || null,
           predecessorIds,
         }),
       });
@@ -331,6 +334,23 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           disabled={saving}
         />
       </div>
+
+      {/* Recurso / Lista */}
+      <div className="form-field">
+        <label className="form-label" htmlFor="task-resource">
+          Recurso
+        </label>
+        <input
+          id="task-resource"
+          className="form-input"
+          type="text"
+          value={resource}
+          onChange={(e) => setResource(e.target.value)}
+          placeholder="Ex: Lista do Trello ou equipe responsável"
+          disabled={saving}
+        />
+      </div>
+
 
       {/* Predecessoras FS */}
       {availableTasks.length > 0 && (

@@ -4,15 +4,59 @@ import type { Route } from "./+types/api.tasks";
 
 // ─── GET /api/tasks?projectId=... ─────────────────────────────────────────────
 
+// export async function loader({ request }: Route.LoaderArgs) {
+//   const url = new URL(request.url);
+//   const projectId = url.searchParams.get("projectId");
+
+//   const tasks = await prisma.task.findMany({
+//     where: projectId ? { projectId } : undefined,
+//     orderBy: { createdAt: "asc" },
+//     include: {
+//       // Tarefas das quais esta depende (predecessoras)
+//       dependencies: {
+//         include: {
+//           predecessor: { select: { id: true, name: true } },
+//         },
+//       },
+//     },
+//   });
+
+//   return data(tasks);
+// }
+//
+
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const projectId = url.searchParams.get("projectId");
+  const id = url.searchParams.get("id");
 
+  // GET /api/tasks?id=xxx → retorna uma única tarefa
+  if (id) {
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        dependencies: {
+          where: { type: "FS" },
+          select: { predecessorId: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return data({ error: "Tarefa não encontrada." }, { status: 404 });
+    }
+
+    return data({
+      ...task,
+      predecessorIds: task.dependencies.map((d) => d.predecessorId),
+    });
+  }
+
+  // GET /api/tasks?projectId=xxx → lista tarefas do projeto
   const tasks = await prisma.task.findMany({
     where: projectId ? { projectId } : undefined,
     orderBy: { createdAt: "asc" },
     include: {
-      // Tarefas das quais esta depende (predecessoras)
       dependencies: {
         include: {
           predecessor: { select: { id: true, name: true } },
@@ -23,6 +67,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   return data(tasks);
 }
+
 
 // ─── POST / PATCH / DELETE /api/tasks ────────────────────────────────────────
 
@@ -42,6 +87,7 @@ export async function action({ request }: Route.ActionArgs) {
       barLabel,
       customClass,
       predecessorIds,
+      resource,
     } = body as {
       name: string;
       projectId: string;
@@ -51,6 +97,7 @@ export async function action({ request }: Route.ActionArgs) {
       barLabel?: string;
       customClass?: string;
       predecessorIds?: string[];
+      resource?: string | null;
     };
 
     // Validações
@@ -124,6 +171,7 @@ export async function action({ request }: Route.ActionArgs) {
           progress: progress ?? 0,
           barLabel: barLabel?.trim() || null,
           customClass: customClass?.trim() || null,
+          resource: resource?.trim() || null
         },
       });
 
@@ -157,6 +205,7 @@ export async function action({ request }: Route.ActionArgs) {
       barLabel,
       customClass,
       predecessorIds,
+      resource,
     } = body as {
       id: string;
       name?: string;
@@ -166,6 +215,7 @@ export async function action({ request }: Route.ActionArgs) {
       barLabel?: string | null;
       customClass?: string | null;
       predecessorIds?: string[];
+      resource?: string | null;
     };
 
     if (!id)
@@ -179,6 +229,9 @@ export async function action({ request }: Route.ActionArgs) {
       updateData.barLabel = barLabel?.trim() || null;
     if (customClass !== undefined)
       updateData.customClass = customClass?.trim() || null;
+    if (resource !== undefined)
+      updateData.resource = resource?.trim() || null;
+
 
     if (start !== undefined) {
       const d = new Date(start);
@@ -199,6 +252,21 @@ export async function action({ request }: Route.ActionArgs) {
         where: { id },
         data: updateData,
       });
+
+      // Se a task tem trelloCardId e start ou end foram alterados, sincroniza com Trello
+      if (task.trelloCardId && (start !== undefined || end !== undefined)) {
+        fetch("http://localhost:8000/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trello_card_id: task.trelloCardId,
+            start: task.start.toISOString(),
+            end: task.end.toISOString(),
+          }),
+        }).catch((err) => console.error("Falha ao sincronizar com Trello:", err));
+        // fire-and-forget: não bloqueia a resposta ao usuário
+      }
+
 
       if (predecessorIds !== undefined) {
         // Remove todas as dependências FS existentes como successor

@@ -14,6 +14,10 @@ export async function loader(_: Route.LoaderArgs) {
     orderBy: { createdAt: "asc" },
     include: {
       tasks: {
+        where: { OR: [
+           { trelloSyncStatus: null },      // tarefas manuais
+           { trelloSyncStatus: "active" },  // tarefas sincronizadas ativas
+         ]},
         orderBy: { createdAt: "asc" },
         include: {
           dependencies: {
@@ -36,6 +40,7 @@ export default function GanttPage() {
 
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // ── Callbacks do Gantt (arrastar / redimensionar) ─────────────────────────
 
@@ -75,6 +80,44 @@ export default function GanttPage() {
     revalidate();
   }
 
+  // -- Importação de dados do Trello
+  async function handleTrelloImport() {
+    setImporting(true);
+    try {
+      const res = await fetch("/api/trello-import", { method: "POST" });
+      const result = await res.json();
+      console.log("retorno do enpoint", result);
+      alert(`Importado: ${result.created} criadas, ${result.updated} atualizadas, ${result.orphaned} órfãs.`);
+      revalidate();
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // ── Callback de dependência (popup do Gantt) ─────────────────────────────
+
+  async function handleAddDependency(taskId: string, predecessorId: string) {
+    // Encontra a task para obter as dependências atuais
+    const task = tasks.find((t) => t.id === taskId);
+    const existingDeps = task?.dependencies
+      ? task.dependencies.split(",").filter(Boolean)
+      : [];
+
+    // Evita duplicata
+    if (existingDeps.includes(predecessorId)) return;
+
+    const mergedDeps = [...existingDeps, predecessorId];
+
+    await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: taskId, predecessorIds: mergedDeps }),
+    });
+
+    revalidate();
+  }
+
+
   // ── Callbacks dos formulários ─────────────────────────────────────────────
 
   function handleFormSuccess() {
@@ -90,6 +133,10 @@ export default function GanttPage() {
         <h1 className="gantt-page-title">Cronograma da Carteira</h1>
 
         <div className="gantt-page-actions">
+          <button className="btn btn-trello" onClick={handleTrelloImport} disabled={importing}>
+            {importing ? "Importando..." : "Importar Trello"}
+          </button>
+
           <button
             className="btn btn-secondary"
             onClick={() => setTaskFormOpen(true)}
@@ -114,6 +161,8 @@ export default function GanttPage() {
           defaultView="Week"
           onDateChange={handleDateChange}
           onProgressChange={handleProgressChange}
+          onAddDependency={handleAddDependency}
+          onTaskUpdated={() => revalidate()}
         />
       </main>
 
