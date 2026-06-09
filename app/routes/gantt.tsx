@@ -86,8 +86,22 @@ export default function GanttPage() {
     try {
       const res = await fetch("/api/trello-import", { method: "POST" });
       const result = await res.json();
-      console.log("retorno do enpoint", result);
-      alert(`Importado: ${result.created} criadas, ${result.updated} atualizadas, ${result.orphaned} órfãs.`);
+
+      // 2. Sincroniza progresso dos projetos
+      const progRes = await fetch("/api/sync-progress", { method: "POST" });
+      const progData = await progRes.json();
+
+      const msg = [
+        `Importado: ${result.created} criadas, ${result.updated} atualizadas, ${result.orphaned} órfãs.`,
+        `Progresso: ${progData.updated} projetos atualizados.`,
+        ...(progData.warnings?.length
+          ? [`\nAlertas:\n${progData.warnings.join("\n")}`]
+          : []),
+      ].join("\n");
+
+      alert(msg);
+
+
       revalidate();
     } finally {
       setImporting(false);
@@ -160,7 +174,6 @@ export default function GanttPage() {
           tasks={tasks}
           defaultView="Week"
           onDateChange={handleDateChange}
-          onProgressChange={handleProgressChange}
           onAddDependency={handleAddDependency}
           onTaskUpdated={() => revalidate()}
         />

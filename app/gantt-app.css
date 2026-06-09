@@ -529,3 +529,41 @@ body {
   background: var(--color-primary);
   color: var(--color-primary-text);
 }
+
+/* Estilos base compartilhados (se houver)
+.gantt-project-bar,
+.gantt-project-bar-warning {
+    background-color: darkred;
+}
+*/
+
+/* Indicador visual de warning
+.gantt-project-bar-warning {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f0ad4e,
+    #f0ad4e 4px,
+    #f5c26b 4px,
+    #f5c26b 8px
+  ) !important;
+  border: 1px solid #e09620 !important;
+}
+ */
+
+
+ /* Projeto com warning de horas — mesma estrutura, cor âmbar */
+ .gantt-project-bar-warning .bar {
+   fill: #f0ad4e !important;
+ }
+ .gantt-project-bar-warning .bar-wrapper {
+   pointer-events: none;
+   cursor: default !important;
+ }
+ .gantt-project-bar-warning .bar-label {
+   fill: #1a1917 !important;          /* texto escuro sobre fundo âmbar */
+   font-weight: 600 !important;
+   font-size: 13px !important;
+ }
+ .gantt-project-bar-warning .handle {
+   display: none !important;
+ }

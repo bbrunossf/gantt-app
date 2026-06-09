@@ -6,4 +6,5 @@ export default [
   route("api/projects",    "routes/api.projects.ts"),
   route("api/tasks", "routes/api.tasks.ts"),
   route("api/trello-import", "routes/api.trello-import.ts"),
+  route("api/sync-progress", "routes/api.sync-progress.ts"),
 ] satisfies RouteConfig;

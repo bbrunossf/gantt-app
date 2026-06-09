@@ -17,6 +17,11 @@ model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
+  codObra      String?              // ← novo: código da obra (link com ERP)
+  progress     Float?   @default(0)  // ← novo: 0–100, vindo da view
+  plannedHours Float?               // ← novo: horas previstas (view)
+  actualHours  Float?               // ← novo: horas realizadas (view)
+   hasHoursWarning Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -29,7 +34,6 @@ model Task {
   name        String
   start       DateTime @db.Date
   end         DateTime @db.Date
-  progress    Float    @default(0) // 0 a 100
   barLabel    String? // bar_label: substitui 'name' na barra do gráfico
   customClass String? // custom_class: ex "bar-milestone"
   createdAt   DateTime @default(now())

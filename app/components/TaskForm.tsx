@@ -63,7 +63,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
   const [end, setEnd] = useState(
     task ? toInputDate(task.end) : ""
   );
-  const [progress, setProgress] = useState(task?.progress ?? 0);
+
   const [barLabel, setBarLabel] = useState(task?.barLabel ?? "");
   const [customClass, setCustomClass] = useState(task?.customClass ?? "");
   const [resource, setResource] = useState(task?.resource ?? "");
@@ -158,8 +158,8 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
     if (!end) return setError("A data de término é obrigatória.");
     if (start && end < start)
       return setError("O término não pode ser anterior ao início.");
-    if (progress < 0 || progress > 100)
-      return setError("O progresso deve estar entre 0 e 100.");
+    // if (progress < 0 || progress > 100)
+    //   return setError("O progresso deve estar entre 0 e 100.");
 
     setSaving(true);
 
@@ -173,7 +173,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           projectId,
           start: start || undefined, // será preenchido no servidor se vier vazio
           end,
-          progress,
+          // progress,
           barLabel: barLabel.trim() || null,
           customClass: customClass.trim() || null,
           resource: resource.trim() || null,
@@ -286,7 +286,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       </div>
 
       {/* Progresso */}
-      <div className="form-field">
+      {/*<div className="form-field">
         <label className="form-label" htmlFor="task-progress">
           Progresso: <strong>{progress}%</strong>
         </label>
@@ -301,7 +301,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           onChange={(e) => setProgress(Number(e.target.value))}
           disabled={saving}
         />
-      </div>
+      </div>*/}
 
       {/* Rótulo da barra (barLabel) */}
       <div className="form-field">

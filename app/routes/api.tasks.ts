@@ -83,7 +83,6 @@ export async function action({ request }: Route.ActionArgs) {
       projectId,
       start,
       end,
-      progress,
       barLabel,
       customClass,
       predecessorIds,
@@ -93,7 +92,6 @@ export async function action({ request }: Route.ActionArgs) {
       projectId: string;
       start?: string;        // opcional se houver predecessoras
       end: string;
-      progress?: number;
       barLabel?: string;
       customClass?: string;
       predecessorIds?: string[];
@@ -168,7 +166,6 @@ export async function action({ request }: Route.ActionArgs) {
           projectId,
           start: resolvedStart,
           end: endDate,
-          progress: progress ?? 0,
           barLabel: barLabel?.trim() || null,
           customClass: customClass?.trim() || null,
           resource: resource?.trim() || null
@@ -201,7 +198,6 @@ export async function action({ request }: Route.ActionArgs) {
       name,
       start,
       end,
-      progress,
       barLabel,
       customClass,
       predecessorIds,
@@ -211,7 +207,6 @@ export async function action({ request }: Route.ActionArgs) {
       name?: string;
       start?: string;
       end?: string;
-      progress?: number;
       barLabel?: string | null;
       customClass?: string | null;
       predecessorIds?: string[];
@@ -224,7 +219,6 @@ export async function action({ request }: Route.ActionArgs) {
     // Monta payload dinâmico — só altera campos enviados
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name.trim();
-    if (progress !== undefined) updateData.progress = progress;
     if (barLabel !== undefined)
       updateData.barLabel = barLabel?.trim() || null;
     if (customClass !== undefined)

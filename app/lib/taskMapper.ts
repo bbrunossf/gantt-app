@@ -52,17 +52,11 @@ export function mapProjectsToGanttTasks(
     const projectStart = new Date(Math.min(...starts));
     const projectEnd = new Date(Math.max(...ends));
 
-    // Progresso do projeto = média ponderada pela duração das tarefas
-    const totalDuration = tasks.reduce(
-      (sum, t, i) => sum + (ends[i] - starts[i]),
-      0
-    );
-    const weightedProgress = tasks.reduce((sum, t) => {
-      const duration = t.end.getTime() - t.start.getTime();
-      return sum + t.progress * duration;
-    }, 0);
-    const projectProgress =
-      totalDuration > 0 ? Math.round(weightedProgress / totalDuration) : 0;
+    const projectProgress = project.progress ?? 0; //vem do banco de dados
+
+    const projectCustomClass = project.hasHoursWarning
+      ? "gantt-project-bar-warning"
+      : "gantt-project-bar";
 
     result.push({
       id: `project-${project.id}`,
@@ -71,7 +65,7 @@ export function mapProjectsToGanttTasks(
       end: formatDate(projectEnd),
       progress: projectProgress,
       dependencies: "",
-      customClass: "gantt-project-bar",
+      customClass: projectCustomClass,
       barLabel: "",
     });
 
@@ -86,7 +80,7 @@ export function mapProjectsToGanttTasks(
         name: task.name,
         start: formatDate(task.start),
         end: formatDate(task.end),
-        progress: task.progress,
+        progress: 0, //uai, porque ainda precisa ter?
         dependencies: predecessorIds,
         customClass: task.customClass ?? "",
         barLabel: task.barLabel ?? "",

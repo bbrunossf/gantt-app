@@ -30,6 +30,7 @@ TRELLO_TOKEN      = os.environ["TRELLO_TOKEN"]
 TRELLO_BOARD_ID   = os.environ["TRELLO_BOARD_ID"]
 TRELLO_LIST_NAMES = os.environ.get("TRELLO_LIST_NAMES", "")
 DATABASE_URL      = os.environ["DATABASE_URL"]
+PLENA_DATABASE_URL = os.environ["PLENA_DATABASE_URL"]
 
 # Nome do projeto padrão para tarefas importadas do Trello.
 # Se não existir no banco, será criado automaticamente no primeiro /import.
@@ -41,6 +42,8 @@ AUTH_PARAMS = {"key": TRELLO_API_KEY, "token": TRELLO_TOKEN}
 # ── Database connection pool ──────────────────────────────────────────────────
 
 db_pool = psycopg2.pool.SimpleConnectionPool(1, 10, DATABASE_URL)
+plena_pool = psycopg2.pool.SimpleConnectionPool(1, 5, PLENA_DATABASE_URL)
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -68,6 +71,11 @@ class SyncRequest(BaseModel):
 
 class SyncResponse(BaseModel):
     success: bool
+
+class SyncProgressResponse(BaseModel):
+    updated: int
+    warnings: list[str]
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -286,6 +294,114 @@ def import_from_trello():
 
     return ImportResponse(created=created, updated=updated, orphaned=orphaned)
 
+@app.post("/sync-progress", response_model=SyncProgressResponse)
+def sync_progress():
+    """
+    Lê a view vw_hras_obra do banco plena e atualiza o progresso
+    dos projetos no banco do Gantt.
+
+    Regras:
+      - Relaciona projetos por Project.codObra = vw_hras_obra.cod_obra
+      - progress = percentual_executado (já calculado pela view)
+      - Valida se duração do projeto (dias) × 8h ≈ horas_previstas
+    """
+    warnings: list[str] = []
+    updated = 0
+
+    # 1. Lê dados da view no banco plena
+    pc = plena_pool.getconn()
+    try:
+        with pc, pc.cursor() as cur:
+            cur.execute("""
+                SELECT cod_obra, total_horas_planejadas,
+                total_horas_executadas, percentual_executado
+                FROM vw_horas_obra
+                """
+            )
+            rows = cur.fetchall()
+            print(f"valores obtidos na view: {rows}")
+    finally:
+        plena_pool.putconn(pc)
+
+    if not rows:
+        return SyncProgressResponse(updated=0, warnings=["View vazia."])
+
+    # 2. Para cada obra, atualiza o projeto correspondente
+    gc = _get_db()
+    try:
+        with gc, gc.cursor() as cur:
+            for cod_obra, horas_planejadas, horas_executadas, percentual in rows:
+                progress = float(percentual or 0)
+
+                # Atualiza o projeto pelo codObra
+                cur.execute(
+                    """
+                    UPDATE "Project"
+                       SET progress       = %s,
+                           "plannedHours" = %s,
+                           "actualHours"  = %s,
+                           "updatedAt"    = NOW()
+                     WHERE "codObra" = %s
+                    """,
+                    (progress, horas_planejadas, horas_executadas, cod_obra),
+                )
+
+                if cur.rowcount == 0:
+                    warnings.append(
+                        f"Obra '{cod_obra}' não encontrada na tabela Project."
+                    )
+                    continue
+
+                updated += cur.rowcount
+
+                # 3. Validação: duração do projeto vs horas previstas
+                cur.execute(
+                    """
+                    SELECT p.name, MIN(t.start), MAX(t."end")
+                    FROM "Project" p
+                    JOIN "Task" t ON t."projectId" = p.id
+                    WHERE p."codObra" = %s
+                    GROUP BY p.name
+                    """,
+                    (cod_obra,),
+                )
+                proj = cur.fetchone()
+
+                has_warning = False
+
+                if proj and horas_planejadas and horas_planejadas > 0:
+                    name, min_start, max_end = proj
+                    if min_start and max_end:
+                        dias_uteis = (max_end - min_start).days
+                        horas_duracao = dias_uteis * 8
+
+                        if horas_duracao > 0:
+                            desvio = abs(horas_duracao - horas_planejadas) / horas_planejadas
+                            if desvio > 0.2:
+                                has_warning = True
+                                warnings.append(
+                                    f"'{name}': duração das tarefas "
+                                    f"({dias_uteis}d × 8h = {horas_duracao}h) "
+                                    f"diverge das horas previstas "
+                                    f"({horas_planejadas}h) em {desvio:.0%}."
+                                )
+                elif not proj:
+                    warnings.append(
+                        f"Obra '{cod_obra}': projeto sem tarefas — "
+                        f"não foi possível validar duração."
+                    )
+
+                # Atualiza o flag de warning
+                cur.execute(
+                    'UPDATE "Project" SET "hasHoursWarning" = %s WHERE "codObra" = %s',
+                    (has_warning, cod_obra),
+                )
+
+
+    finally:
+        _put_db(gc)
+
+    return SyncProgressResponse(updated=updated, warnings=warnings)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST /sync
