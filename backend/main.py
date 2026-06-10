@@ -8,9 +8,10 @@ Endpoints:
 """
 
 import os
+import re
 from datetime import date, datetime
 
-import cuid
+import cuid2
 import psycopg2
 import psycopg2.pool
 import requests
@@ -19,6 +20,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 load_dotenv()
+
+_cuid = cuid2.Cuid()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -122,6 +125,48 @@ def _parse_date(value) -> date | None:
     except (ValueError, TypeError):
         return None
 
+#
+# funções para importar projetos
+# #
+
+def _extract_cod_obra(description: str) -> str | None:
+    """Extrai o código da obra da descrição via regex ID_OBRA = \d{3}"""
+    if not description:
+        return None
+    match = re.search(r"ID_OBRA = (\d{3})", description)
+    return match.group(1) if match else None
+
+
+def _extract_cod_obra_from_name(name: str) -> str | None:
+    """Extrai código da obra dos 3 primeiros caracteres do nome, se forem dígitos."""
+    if not name or len(name) < 3:
+        return None
+    prefix = name[:3]
+    return prefix if prefix.isdigit() else None
+
+
+def _get_or_create_project_by_cod_obra(cur, cod_obra: str) -> str:
+    """
+    Retorna o id do projeto associado ao codObra.
+    Cria o projeto se ele ainda não existir (apenas um projeto por codObra).
+    """
+    cur.execute(
+        'SELECT id FROM "Project" WHERE "codObra" = %s LIMIT 1',
+        (cod_obra,),
+    )
+    row = cur.fetchone()
+    if row:
+        return row[0]
+
+    project_id = _cuid.generate()
+
+    cur.execute(
+        'INSERT INTO "Project" (id, name, "codObra", "createdAt", "updatedAt") VALUES (%s, %s, %s, NOW(), NOW())',
+        (project_id, f"Obra {cod_obra}", cod_obra),
+    )
+    return project_id
+
+
 def _get_or_create_default_project(cur) -> str:
     """
     Retorna o id do projeto padrão (DEFAULT_PROJECT_NAME).
@@ -135,7 +180,7 @@ def _get_or_create_default_project(cur) -> str:
     if row:
         return row[0]
 
-    project_id = str(cuid.cuid())
+    project_id = _cuid.generate()
     cur.execute(
         'INSERT INTO "Project" (id, name, "createdAt", "updatedAt") VALUES (%s, %s, NOW(), NOW())',
         (project_id, DEFAULT_PROJECT_NAME),
@@ -196,6 +241,11 @@ def import_from_trello():
             if end < start:
                 start, end = end, start
 
+            # Extrai código da obra (descrição → fallback: nome)
+            cod_obra = _extract_cod_obra(card.get("desc", ""))
+            if not cod_obra:
+                cod_obra = _extract_cod_obra_from_name(card["name"])
+
             trello_card_ids.add(card["id"])
             upsert.append({
                 "trello_card_id": card["id"],
@@ -204,7 +254,9 @@ def import_from_trello():
                 "end":            end,
                 "resource":       lst["name"],
                 "bar_label":      lst["name"],
+                "cod_obra":       cod_obra,
             })
+
 
     # 2. Upsert no PostgreSQL
     created = 0
@@ -217,6 +269,13 @@ def import_from_trello():
             default_project_id = _get_or_create_default_project(cur)
 
             for t in upsert:
+                # Determina o projeto: se tem codObra, usa projeto específico; senão, default
+                project_id = (
+                    _get_or_create_project_by_cod_obra(cur, t["cod_obra"])
+                    if t.get("cod_obra")
+                    else default_project_id
+                )
+
                 cur.execute(
                     'SELECT id FROM "Task" WHERE "trelloCardId" = %s',
                     (t["trello_card_id"],),
@@ -227,16 +286,18 @@ def import_from_trello():
                     cur.execute(
                         """
                         UPDATE "Task"
-                           SET name       = %s,
-                               start      = %s,
-                               "end"      = %s,
-                               resource   = %s,
-                               "barLabel" = %s,
-                               "trelloSyncStatus" = 'active',
-                               "updatedAt" = NOW()
-                         WHERE "trelloCardId" = %s
+                            SET "projectId" = %s,
+                                name       = %s,
+                                start      = %s,
+                                "end"      = %s,
+                                resource   = %s,
+                                "barLabel" = %s,
+                                "trelloSyncStatus" = 'active',
+                                "updatedAt" = NOW()
+                            WHERE "trelloCardId" = %s
                         """,
                         (
+                            project_id,
                             t["name"], t["start"], t["end"],
                             t["resource"], t["bar_label"],
                             t["trello_card_id"],
@@ -247,21 +308,22 @@ def import_from_trello():
                     cur.execute(
                         """
                         INSERT INTO "Task"
-                            (id, "projectId", name, start, "end", progress,
-                             "barLabel", resource, "trelloCardId",
-                             "trelloSyncStatus", "createdAt", "updatedAt")
+                            (id, "projectId", name, start, "end",
+                                "barLabel", resource, "trelloCardId",
+                                "trelloSyncStatus", "createdAt", "updatedAt")
                         VALUES
-                            (%s, %s, %s, %s, %s, 0,
-                             %s, %s, %s,
-                             'active', NOW(), NOW())
+                            (%s, %s, %s, %s, %s,
+                                %s, %s, %s,
+                                'active', NOW(), NOW())
                         """,
                         (
-                            str(cuid.cuid()), default_project_id,
+                            _cuid.generate(), project_id,
                             t["name"], t["start"], t["end"],
                             t["bar_label"], t["resource"], t["trello_card_id"],
                         ),
                     )
                     created += 1
+
 
             # 3. Marca órfãos (cards deletados/movidos do Trello)
             if trello_card_ids:
