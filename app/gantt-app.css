@@ -530,6 +530,130 @@ body {
   color: var(--color-primary-text);
 }
 
+/* ── Cores por recurso ─────────────────────────────────────────────────────── */
+
+.gantt-res-default { fill: #BBBBBB; }
+.gantt-res-0  .bar { fill: #0077BB !important; } /*"Dayana":   "#0077BB",*/
+.gantt-res-1  .bar { fill: #EE7733 !important; }  /*"Leonardo": "#EE7733",*/
+.gantt-res-2  .bar { fill: #AA3377 !important; } /*"Karina":   "#AA3377",*/
+.gantt-res-3  .bar { fill: #BBBBBB !important; } /*"Eduardo":  "#CCBB44",*/
+.gantt-res-4  .bar { fill: #CCBB44 !important; } /*"Thadeu":   "#66CCEE",*/
+.gantt-res-5  .bar { fill: #66CCEE !important; } /*"Carol":    "#059669",*/
+.gantt-res-6  .bar { fill: #222222 !important; } /*"Bruno":    "#7c3aed",*/
+.gantt-res-7  .bar { fill: #ea580c !important; }
+
+/*
+.gantt-res-8  .bar { fill: #65a30d !important; }
+.gantt-res-9  .bar { fill: #2563eb !important; }
+.gantt-res-10 .bar { fill: #9333ea !important; }
+.gantt-res-11 .bar { fill: #0d9488 !important; }
+.gantt-res-12 .bar { fill: #b91c1c !important; }
+.gantt-res-13 .bar { fill: #4d7c0f !important; }
+.gantt-res-14 .bar { fill: #a21caf !important; }*/
+
+/* Label branca nas barras coloridas por recurso */
+[class*="gantt-res-"] .bar-label { fill: black !important; }
+
+/* ── Dropdown de filtro por recurso ─────────────────────────────────────────── */
+
+.resource-filter {
+  position: relative;
+}
+
+.resource-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 34px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--color-text-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.resource-filter-trigger:hover {
+  background: var(--color-surface-alt);
+}
+
+.resource-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border-radius: 10px;
+}
+
+.resource-filter-arrow {
+  font-size: 10px;
+  color: var(--color-text-3);
+  transition: transform 0.15s;
+}
+
+.resource-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px 0;
+  z-index: 50;
+  animation: dropdown-in 0.12s ease;
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.resource-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--color-text-1);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.resource-filter-option:hover {
+  background: var(--color-surface-alt);
+}
+
+.resource-filter-option input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.resource-filter-divider {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--color-border);
+}
+
+
 /* Estilos base compartilhados (se houver)
 .gantt-project-bar,
 .gantt-project-bar-warning {

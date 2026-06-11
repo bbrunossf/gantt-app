@@ -247,19 +247,33 @@ export async function action({ request }: Route.ActionArgs) {
         data: updateData,
       });
 
-      // Se a task tem trelloCardId e start ou end foram alterados, sincroniza com Trello
-      if (task.trelloCardId && (start !== undefined || end !== undefined)) {
+      const hasTrelloChanges =
+        start !== undefined ||
+        end !== undefined ||
+        name !== undefined ||
+        resource !== undefined;
+
+      if (updated.trelloCardId && hasTrelloChanges) {
+        const syncPayload: Record<string, unknown> = {
+          trello_card_id: updated.trelloCardId,
+        };
+
+        if (start !== undefined)
+          syncPayload.start = updated.start.toISOString().slice(0, 10);
+        if (end !== undefined)
+          syncPayload.end = updated.end.toISOString().slice(0, 10);
+        if (name !== undefined)
+          syncPayload.name = name.trim();
+        if (resource !== undefined)
+          syncPayload.resource = resource?.trim() || null;
+
         fetch("http://localhost:8000/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            trello_card_id: task.trelloCardId,
-            start: task.start.toISOString(),
-            end: task.end.toISOString(),
-          }),
+          body: JSON.stringify(syncPayload),
         }).catch((err) => console.error("Falha ao sincronizar com Trello:", err));
-        // fire-and-forget: não bloqueia a resposta ao usuário
       }
+
 
 
       if (predecessorIds !== undefined) {

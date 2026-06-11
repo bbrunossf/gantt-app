@@ -222,7 +222,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       </div>
 
       {/* Projeto */}
-      <div className="form-field">
+      {/*<div className="form-field">
         <label className="form-label" htmlFor="task-project">
           Projeto <span className="form-required">*</span>
         </label>
@@ -240,7 +240,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             </option>
           ))}
         </select>
-      </div>
+      </div>*/}
 
       {/* Datas (linha dupla) */}
       <div className="form-row">
@@ -304,7 +304,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       </div>*/}
 
       {/* Rótulo da barra (barLabel) */}
-      <div className="form-field">
+      {/*<div className="form-field">
         <label className="form-label" htmlFor="task-barLabel">
           Rótulo na barra
         </label>
@@ -317,10 +317,10 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           placeholder="Substitui o nome no gráfico (opcional)"
           disabled={saving}
         />
-      </div>
+      </div>*/}
 
       {/* Classe CSS customizada (customClass) */}
-      <div className="form-field">
+      {/*<div className="form-field">
         <label className="form-label" htmlFor="task-customClass">
           Classe CSS
         </label>
@@ -333,7 +333,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           placeholder="Ex: bar-milestone"
           disabled={saving}
         />
-      </div>
+      </div>*/}
 
       {/* Recurso / Lista */}
       <div className="form-field">

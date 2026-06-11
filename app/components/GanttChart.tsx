@@ -90,10 +90,7 @@ function buildPopupHtml(
           <span class="gantt-popup-label">Fim:</span>
           <span>${popupTask.end || "-"}</span>
         </div>
-        <div class="gantt-popup-row">
-          <span class="gantt-popup-label">Progresso:</span>
-          <span>${popupTask.progress}%</span>
-        </div>
+
       </div>
       <div class="gantt-popup-footer">
         <button
@@ -285,6 +282,7 @@ export default function GanttChart({
       date_format: "YYYY-MM-DD",
       readonly: readOnly,
       infinite_padding: false,
+      padding: 4,
 
       popup(ctx: any) {
         const popupTask = ctx.task;
@@ -299,14 +297,42 @@ export default function GanttChart({
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
 
+          const horasGastasRow =
+            matched &&
+            (!matched.progress || matched.progress === 0 || matched.progress > 100) &&
+            matched.actualHours != null
+              ? `
+                <div class="gantt-popup-row">
+                  <span class="gantt-popup-label">Horas gastas:</span>
+                  <span>${matched.actualHours}h</span>
+                </div>
+              `
+              : "";
+
           return `
             <div class="gantt-custom-popup">
               <div class="gantt-popup-header">
                 <strong>${safeName}</strong>
               </div>
+              <div class="gantt-popup-body">
+                <div class="gantt-popup-row">
+                  <span class="gantt-popup-label">Início:</span>
+                  <span>${popupTask.start}</span>
+                </div>
+                <div class="gantt-popup-row">
+                  <span class="gantt-popup-label">Fim:</span>
+                  <span>${popupTask.end || "-"}</span>
+                </div>
+                <div class="gantt-popup-row">
+                  <span class="gantt-popup-label">Progresso:</span>
+                  <span>${popupTask.progress}%</span>
+                </div>
+              ${horasGastasRow}
+              </div>
             </div>
           `;
         }
+
 
         const others = tasksRef.current.filter(
           (t) => !t.id.startsWith("project-") && t.id !== matched.id

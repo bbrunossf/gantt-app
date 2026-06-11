@@ -68,8 +68,11 @@ class ImportResponse(BaseModel):
 
 class SyncRequest(BaseModel):
     trello_card_id: str
-    start: str   # ISO  "2026-06-15"  ou  "2026-06-15T00:00:00"
-    end: str
+    start: str | None = None     # ISO  "2026-06-15"  ou  "2026-06-15T00:00:00"
+    end: str | None = None
+    name: str | None = None      # novo nome do card
+    resource: str | None = None  # nome da lista de destino (move o card)
+
 
 
 class SyncResponse(BaseModel):
@@ -130,7 +133,7 @@ def _parse_date(value) -> date | None:
 # #
 
 def _extract_cod_obra(description: str) -> str | None:
-    """Extrai o código da obra da descrição via regex ID_OBRA = \d{3}"""
+    """Extrai o código da obra da descrição via regex ID_OBRA = \\d{3}"""
     if not description:
         return None
     match = re.search(r"ID_OBRA = (\d{3})", description)
@@ -381,7 +384,8 @@ def sync_progress():
                 """
             )
             rows = cur.fetchall()
-            print(f"valores obtidos na view: {rows}")
+            #print(f"valores obtidos na view: {rows}")
+            print("ok, obtidos os valores na view")
     finally:
         plena_pool.putconn(pc)
 
@@ -472,32 +476,38 @@ def sync_progress():
 @app.post("/sync", response_model=SyncResponse)
 def sync_to_trello(req: SyncRequest):
     """
-    Atualiza as datas de um card no Trello.
+    Atualiza os campos de um card no Trello.
 
-    - 'end'  → campo nativo 'due' do card
-    - 'start' → custom field 'date'/'data'/'início' do board
+    - 'end'      → campo nativo 'due'
+    - 'start'    → campo nativo 'start'
+    - 'name'     → campo nativo 'name'
+    - 'resource' → move o card para a lista com o nome correspondente
     """
-    # 1. Atualiza data de término (due)
-    _trello_put(f"/cards/{req.trello_card_id}", due=req.end)
+    params: dict = {}
 
-    # 2. Atualiza data de início (custom field "date"/"data"/"início")
-    custom_fields = _trello_get(f"/boards/{TRELLO_BOARD_ID}/customFields")
-    date_field = next(
-        (
-            cf for cf in custom_fields
-            if cf["name"].lower() in ("date", "data", "início", "inicio")
-        ),
-        None,
-    )
+    if req.start is not None:
+        params["start"] = req.start
+    if req.end is not None:
+        params["due"] = req.end
+    if req.name is not None:
+        params["name"] = req.name
 
-    if date_field:
-        field_id = date_field["id"]
-        _trello_put(
-            f"/cards/{req.trello_card_id}/customField/{field_id}/item",
-            json_data={"value": {"date": req.start}},
+    # Move o card se o recurso (lista) foi alterado
+    if req.resource is not None:
+        all_lists = _trello_get(f"/boards/{TRELLO_BOARD_ID}/lists")
+        target_list = next(
+            (lst for lst in all_lists if lst["name"] == req.resource),
+            None,
         )
+        if target_list:
+            params["idList"] = target_list["id"]
+
+    if params:
+        _trello_put(f"/cards/{req.trello_card_id}", **params)
 
     return SyncResponse(success=True)
+
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

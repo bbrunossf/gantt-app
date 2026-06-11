@@ -5,15 +5,16 @@ Created on Mon Jun  8 09:39:26 2026
 @author: pichau
 """
 
-import cuid  # pip install cuid2
+
+import cuid2  # pip install cuid2
 from datetime import date
 import datetime
 
 # Retrieve Trello API key and token from Colab secrets
-TRELLO_API_KEY = "38a02b7db3881952b6ce2bb8355e5e84"
-TRELLO_API_TOKEN = "ATTA5d7d56189c8e06a4a4e2c8970a43e345350e39fb757b80a794ec84319899ef91BEB24BF3"
-TRELLO_BOARD_ID = "69a1858cdc9a553a463c2b21" #board planejamento PLENA
-db_conn_string = "postgresql://plena:123@10.0.0.6:5432/plena"
+TRELLO_API_KEY = ""
+TRELLO_API_TOKEN = ""
+TRELLO_BOARD_ID = "" #board planejamento PLENA
+db_conn_string = ""
 
 import json
 import pandas as pd
@@ -23,6 +24,8 @@ from psycopg2.extras import RealDictCursor
 import re
 from trello import TrelloClient
 from datetime import datetime, timedelta
+
+_cuid = cuid2.Cuid()
 
 # Initialize Trello client
 client = TrelloClient(
@@ -61,7 +64,7 @@ def get_trello_card_data(board_id: str) -> pd.DataFrame:
                     due_date = datetime.fromisoformat(card.due_date.replace('Z', '+00:00'))
                 except:
                     due_date = card.due_date if isinstance(card.due_date, datetime) else None
-            
+
             data.append({
                 'nome_lista': tlist.name,
                 'titulo_card': card.name,
@@ -79,15 +82,15 @@ def get_trello_card_data(board_id: str) -> pd.DataFrame:
 def carregar_dados_trello(board_id: str) -> pd.DataFrame:
     """Carrega e processa dados do Trello"""
     card_df = get_trello_card_data(board_id)
-    
+
     # Remove tarefas concluídas
     card_df = card_df[card_df['tarefa_completa'] != True]
-    
+
     card_df['cod_obra'] = card_df['descricao_card'].apply(extract_cod_obra)
-    
+
     nomes = ['KARINA', 'EDUARDO', 'THADEU', 'CAROL', 'DAYANA', 'LEONARDO']
     final_df = card_df[['nome_lista', 'titulo_card', 'cod_obra', 'due_date']].dropna(subset=['cod_obra'])
-    
+
     return final_df[final_df['nome_lista'].isin(nomes)]
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -136,7 +139,7 @@ def get_trello_gantt_tasks(board_id: str, project_id: str) -> list[dict]:
             due_complete = card.badges.get('dueComplete', False)
 
             tasks.append({
-                'id':          str(cuid.cuid()),   # gerado aqui; troque por lógica própria se quiser
+                'id':          _cuid.generate(),   # gerado aqui; troque por lógica própria se quiser
                 'projectId':   project_id,
                 'name':        card.name,
                 'start':       start,

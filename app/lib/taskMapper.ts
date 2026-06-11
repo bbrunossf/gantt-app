@@ -1,4 +1,14 @@
 import type { Project, Task } from "../../generated/prisma/client";
+// ─── Paleta de cores por recurso ──────────────────────────────────────────────
+
+
+
+function resourceToCssClass(resource: string): string {
+  const known = ["DAYANA", "LEONARDO", "KARINA", "EDUARDO", "THADEU", "CAROL", "BRUNO"];
+  const index = known.indexOf(resource);
+  return index !== -1 ? `gantt-res-${index}` : "gantt-res-default";
+}
+
 
 // ─── Tipo de entrada ───────────────────────────────────────────────────────────
 
@@ -21,6 +31,9 @@ export interface GanttTask {
   dependencies: string;  // comma-separated predecessor IDs (FS only)
   customClass: string;   // CSS class for the bar
   barLabel: string;      // label shown on the bar
+  resource?: string;
+  projectId?: string;
+  actualHours?: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -67,6 +80,8 @@ export function mapProjectsToGanttTasks(
       dependencies: "",
       customClass: projectCustomClass,
       barLabel: "",
+      projectId: project.id,
+      actualHours: project.actualHours ?? undefined,
     });
 
     // ── Tarefas individuais (flat, sem hierarquia) ────────────────────────
@@ -82,8 +97,12 @@ export function mapProjectsToGanttTasks(
         end: formatDate(task.end),
         progress: 0, //uai, porque ainda precisa ter?
         dependencies: predecessorIds,
-        customClass: task.customClass ?? "",
+        customClass:
+          task.customClass ??
+          (task.resource ? resourceToCssClass(task.resource) : ""),
         barLabel: task.barLabel ?? "",
+        resource: task.resource ?? undefined,
+        projectId: project.id,
       });
     }
   }
