@@ -162,7 +162,7 @@ export default function GanttPage() {
       }),
     });
 
-    revalidate();
+    //revalidate();
   }
 
   // async function handleProgressChange(

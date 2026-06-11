@@ -164,6 +164,20 @@ export default function GanttChart({
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
 
+  // ── Debounce para evitar chamadas repetidas durante arraste ──
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDateChangeRef = useRef<{
+    task: GanttTask;
+    start: Date;
+    end: Date;
+  } | null>(null);
+  const pendingProgressChangeRef = useRef<{
+    task: GanttTask;
+    progress: number;
+  } | null>(null);
+
+
   // ── Modal de dependência ─────────────────────────────────────────────────
 
   const [depPicker, setDepPicker] = useState<{
@@ -241,6 +255,16 @@ export default function GanttChart({
       );
   }, []);
 
+  // Limpa o timer de debounce ao desmontar
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+
   // ── Track IDs + data hash ───────────────────────────────────────────────
 
   const prevIds = useRef<string>("");
@@ -279,10 +303,16 @@ export default function GanttChart({
 
     ganttRef.current = new Gantt(containerRef.current, frappeTasks, {
       view_mode: viewMode,
-      date_format: "YYYY-MM-DD",
+      language: 'pt-br',
+      date_format: 'dd/mm/yy',
       readonly: readOnly,
       infinite_padding: false,
-      padding: 4,
+      padding: 6,
+      container_height: 'auto',
+      bar_height: 20, //min 10, max 100, padrao 30
+      column_width: 80,
+      lines: 'both',
+
 
       popup(ctx: any) {
         const popupTask = ctx.task;
@@ -351,25 +381,47 @@ export default function GanttChart({
         onTaskClickRef.current?.(task);
       },
 
-      async on_date_change(task: GanttTask, start: Date, end: Date) {
+      on_date_change(task: GanttTask, start: Date, end: Date) {
         if (!onDateChangeRef.current) return;
-        setSaving(true);
-        try {
-          await onDateChangeRef.current(task, start, end);
-        } finally {
-          setSaving(false);
+
+        pendingDateChangeRef.current = { task, start, end };
+
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
         }
+
+        debounceTimerRef.current = setTimeout(async () => {
+          const pending = pendingDateChangeRef.current;
+          if (!pending) return;
+
+          setSaving(true);                        // ← dentro do timeout → só dispara no save real
+
+          try {
+            await onDateChangeRef.current!(pending.task, pending.start, pending.end);
+
+            const startStr = pending.start.toISOString().slice(0, 10);
+            const endStr = pending.end.toISOString().slice(0, 10);
+
+            const idx = tasksRef.current.findIndex((t) => t.id === pending.task.id);
+            if (idx !== -1) {
+              tasksRef.current[idx] = {
+                ...tasksRef.current[idx],
+                start: startStr,
+                end: endStr,
+              };
+            }
+
+            ganttRef.current?.update_task(pending.task.id, {
+              start: startStr,
+              end: endStr,
+            });
+          } finally {
+            setSaving(false);
+          }
+        }, 1500);
       },
 
-      async on_progress_change(task: GanttTask, progress: number) {
-        if (!onProgressChangeRef.current) return;
-        setSaving(true);
-        try {
-          await onProgressChangeRef.current(task, progress);
-        } finally {
-          setSaving(false);
-        }
-      },
+
     });
   }, [tasks]); // eslint-disable-line react-hooks/exhaustive-deps
 

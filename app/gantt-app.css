@@ -479,6 +479,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-wrap: break-word;
+  width: 175px;
 }
 
 .gantt-popup-header {
@@ -486,6 +488,7 @@ body {
   color: var(--color-text-1);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--color-border);
+
 }
 
 .gantt-popup-body {
