@@ -49,6 +49,49 @@ function formatDate(iso: string): string {
   });
 }
 
+// ─── Helpers de dias úteis ────────────────────────────────────────────────────
+
+function isWeekday(date: Date): boolean {
+  const day = date.getDay();
+  return day !== 0 && day !== 6; // 0=Dom, 6=Sáb
+}
+
+/** Adiciona `days` dias úteis a uma data, retornando string YYYY-MM-DD */
+function addWorkingDays(dateStr: string, days: number): string {
+  const date = new Date(dateStr + "T00:00:00");
+  let added = 0;
+  while (added < days) {
+    date.setDate(date.getDate() + 1);
+    if (isWeekday(date)) added++;
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+/** Subtrai `days` dias úteis de uma data, retornando string YYYY-MM-DD */
+function subtractWorkingDays(dateStr: string, days: number): string {
+  const date = new Date(dateStr + "T00:00:00");
+  let subtracted = 0;
+  while (subtracted < days) {
+    date.setDate(date.getDate() - 1);
+    if (isWeekday(date)) subtracted++;
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+/** Conta quantos dias úteis existem no intervalo fechado [startStr, endStr] */
+function workingDaysBetween(startStr: string, endStr: string): number {
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date(endStr + "T00:00:00");
+  let count = 0;
+  const current = new Date(start);
+  while (current <= end) {
+    if (isWeekday(current)) count++;
+    current.setDate(current.getDate() + 1);
+  }
+  return count;
+}
+
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
@@ -63,6 +106,15 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
   const [end, setEnd] = useState(
     task ? toInputDate(task.end) : ""
   );
+  const [duration, setDuration] = useState(() => {
+    if (task?.start && task?.end) {
+      const s = toInputDate(task.start);
+      const e = toInputDate(task.end);
+      return Math.max(0, workingDaysBetween(s, e) - 1);
+    }
+    return 0;
+  });
+
 
   const [barLabel, setBarLabel] = useState(task?.barLabel ?? "");
   const [customClass, setCustomClass] = useState(task?.customClass ?? "");
@@ -82,6 +134,9 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
 
   // Rastreia se o usuário alterou o start manualmente
   const startManuallySet = useRef(false);
+  // Rastreia se o usuário alterou o end manualmente
+  const endManuallySet = useRef(false);
+
 
   // ── Carrega projetos ao montar ──────────────────────────────────────────
 
@@ -136,6 +191,33 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
 
     setStart(toInputDate(latestEnd));
   }, [predecessorIds, availableTasks]);
+
+  useEffect(() => {
+    if (!hasPredecessors) return;
+    if (startManuallySet.current) return;
+
+    const selected = availableTasks.filter((t) =>
+      predecessorIds.includes(t.id)
+    );
+    if (selected.length === 0) return;
+
+    const latestEnd = selected.reduce((latest, t) =>
+      t.end > latest ? t.end : latest,
+      selected[0].end
+    );
+
+    const newStart = toInputDate(latestEnd);
+    setStart(newStart);
+
+    // Recalcula término e duração se o usuário ainda não definiu o término
+    if (!endManuallySet.current) {
+      const newEnd = addWorkingDays(newStart, duration);
+      setEnd(newEnd);
+    } else if (end) {
+      setDuration(Math.max(0, workingDaysBetween(newStart, end) - 1));
+    }
+  }, [predecessorIds, availableTasks]);
+
 
   // ── Toggle de predecessor ───────────────────────────────────────────────
 
@@ -194,6 +276,52 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
     }
   }
 
+  // ── Handlers de data/duração ──────────────────────────────────────────────
+
+  function handleStartChange(value: string) {
+    setStart(value);
+    startManuallySet.current = true;
+
+    let newEnd = end;
+    if (!endManuallySet.current && value) {
+      newEnd = addWorkingDays(value, duration);
+      setEnd(newEnd);
+    }
+
+    if (value && newEnd) {
+      setDuration(Math.max(0, workingDaysBetween(value, newEnd) - 1));
+    } else {
+      setDuration(0);
+    }
+  }
+
+  function handleEndChange(value: string) {
+    setEnd(value);
+    endManuallySet.current = true;
+
+    if (start && value) {
+      setDuration(Math.max(0, workingDaysBetween(start, value) - 1));
+    } else {
+      setDuration(0);
+    }
+  }
+
+  function handleDurationChange(value: string) {
+    const num = value === "" ? 0 : Math.max(0, parseInt(value, 10) || 0);
+    setDuration(num);
+
+    if (!start) return;
+
+    if (endManuallySet.current && end) {
+      // Término é a âncora → recalcula início
+      setStart(subtractWorkingDays(end, num));
+    } else {
+      // Início é a âncora → recalcula término
+      setEnd(addWorkingDays(start, num));
+    }
+  }
+
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -220,6 +348,23 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           disabled={saving}
         />
       </div>
+
+      <div className="form-field form-field--grow">
+        <label className="form-label" htmlFor="task-duration">
+          Duração (dias úteis)
+        </label>
+        <input
+          id="task-duration"
+          className="form-input"
+          type="number"
+          min={0}
+          value={duration}
+          onChange={(e) => handleDurationChange(e.target.value)}
+          placeholder="Ex: 5"
+          disabled={saving}
+        />
+      </div>
+
 
       {/* Projeto */}
       {/*<div className="form-field">
@@ -256,10 +401,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             className="form-input"
             type="date"
             value={start}
-            onChange={(e) => {
-              setStart(e.target.value);
-              startManuallySet.current = true;
-            }}
+            onChange={(e) => handleStartChange(e.target.value)}
             disabled={saving}
           />
           {derivedFromPredecessors && (
@@ -279,7 +421,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             type="date"
             value={end}
             min={start || undefined}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={(e) => handleEndChange(e.target.value)}
             disabled={saving}
           />
         </div>

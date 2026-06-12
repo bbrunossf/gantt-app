@@ -6,6 +6,34 @@ import Gantt from "frappe-gantt";
 import type { GanttTask } from "../lib/taskMapper";
 import TaskForm from "./TaskForm";
 
+//feriados
+const HOLIDAYS = [
+  { date: '2026-01-01', name: 'Dia do Trabalho' },
+  { date: '2026-02-16', name: 'Carnaval' },
+  { date: '2026-02-17', name: 'Carnaval' },
+  { date: '2026-02-18', name: 'Carnaval' },
+  { date: '2026-04-03', name: 'Good Friday' },
+  { date: '2026-04-13', name: 'May Day' },
+  { date: '2026-04-21', name: 'Tiradentes' },
+  { date: '2026-05-01', name: 'Krishna Janmastami' },
+  { date: '2026-06-04', name: 'Independence Day' },
+  { date: '2026-09-07', name: 'Independencia' },
+  { date: '2026-09-08', name: 'Feriado municipal' },
+  { date: '2026-10-12', name: 'NS Aparecida' },
+  { date: '2026-11-02', name: 'Mahatma Gandhi Jayanti' },
+  { date: '2026-11-15', name: 'Diwali' },
+  { date: '2026-11-20', name: 'Guru Nanak Jayanthi' },
+  { date: '2026-12-24', name: 'Natal' },
+  { date: '2026-12-25', name: 'Recesso' },
+  { date: '2026-12-26', name: 'Recesso' },
+  { date: '2026-12-27', name: 'Recesso' },
+  { date: '2026-12-28', name: 'Recesso' },
+  { date: '2026-12-29', name: 'Recesso' },
+  { date: '2026-12-30', name: 'Recesso' },
+  { date: '2026-12-31', name: 'Recesso' },
+  { date: '2027-01-01', name: 'Dia do Trabalho' },
+];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type GanttViewMode =
@@ -305,14 +333,20 @@ export default function GanttChart({
       view_mode: viewMode,
       language: 'pt-br',
       date_format: 'dd/mm/yy',
-      readonly: readOnly,
       infinite_padding: false,
       padding: 6,
       container_height: 'auto',
       bar_height: 20, //min 10, max 100, padrao 30
       column_width: 80,
       lines: 'both',
-
+      readonly_progress: true,
+      // holidays: {
+      //   '#fffddb': HOLIDAYS,
+      // },
+      holidays: {
+        'var(--g-weekend-highlight-color)': 'weekend',
+        '#fffddb': HOLIDAYS,
+      },
 
       popup(ctx: any) {
         const popupTask = ctx.task;
