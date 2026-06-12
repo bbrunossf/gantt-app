@@ -7,7 +7,7 @@ import type { Route } from "./+types/api.projects";
 export async function loader({ request }: Route.LoaderArgs) {
   const projects = await prisma.project.findMany({
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, description: true, createdAt: true },
+    select: { id: true, name: true,  codObra: true, description: true, createdAt: true },
   });
 
   return data(projects);
@@ -22,8 +22,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (method === "POST") {
     const body = await request.json();
-    const { name, description } = body as {
+    const { name, codObra, description } = body as {
       name: string;
+      codObra?: string;
       description?: string;
     };
 
@@ -32,7 +33,11 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     const project = await prisma.project.create({
-      data: { name: name.trim(), description: description?.trim() ?? null },
+      data: {
+        name: name.trim(),
+        codObra: codObra?.trim() || null,
+        description: description?.trim() ?? null
+      },
     });
 
     return data(project, { status: 201 });
@@ -42,9 +47,10 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (method === "PATCH") {
     const body = await request.json();
-    const { id, name, description } = body as {
+    const { id, name, codObra, description } = body as {
       id: string;
       name?: string;
+      codObra?: string;
       description?: string;
     };
 
@@ -56,6 +62,9 @@ export async function action({ request }: Route.ActionArgs) {
       where: { id },
       data: {
         ...(name !== undefined && { name: name.trim() }),
+        ...(codObra !== undefined && {
+                codObra: codObra?.trim() || null,
+              }),
         ...(description !== undefined && {
           description: description?.trim() ?? null,
         }),

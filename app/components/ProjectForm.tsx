@@ -7,6 +7,7 @@ import FormModal from "./FormModal";
 interface ProjectFormData {
   id: string;
   name: string;
+  codObra: string | null;
   description: string | null;
   createdAt: string; // retornado pela API GET, mas não editável
   // updatedAt é gerenciado automaticamente pelo Prisma (@updatedAt)
@@ -43,6 +44,8 @@ export default function ProjectForm({
   const [description, setDescription] = useState(
     project?.description ?? ""
   );
+  const [codObra, setCodObra] = useState(project?.codObra ?? "");
+
 
   // Estado do form
   const [saving, setSaving] = useState(false);
@@ -66,6 +69,7 @@ export default function ProjectForm({
         body: JSON.stringify({
           ...(isEditing && { id: project!.id }),
           name: name.trim(),
+          codObra: codObra.trim() || null,
           description: description.trim() || null,
         }),
       });
@@ -109,6 +113,23 @@ export default function ProjectForm({
           disabled={saving}
         />
       </div>
+
+      {/* Código da Obra */}
+      <div className="form-field">
+        <label className="form-label" htmlFor="project-codobra">
+          Código da Obra
+        </label>
+        <input
+          id="project-codobra"
+          className="form-input"
+          type="text"
+          value={codObra}
+          onChange={(e) => setCodObra(e.target.value)}
+          placeholder="Ex: OBRA-001"
+          disabled={saving}
+        />
+      </div>
+
 
       {/* Descrição */}
       <div className="form-field">
