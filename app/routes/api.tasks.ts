@@ -267,7 +267,7 @@ export async function action({ request }: Route.ActionArgs) {
         if (resource !== undefined)
           syncPayload.resource = resource?.trim() || null;
 
-        fetch("http://localhost:8000/sync", {
+        fetch("http://localhost:8001/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(syncPayload),

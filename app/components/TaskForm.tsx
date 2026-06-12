@@ -367,7 +367,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
 
 
       {/* Projeto */}
-      {/*<div className="form-field">
+      <div className="form-field">
         <label className="form-label" htmlFor="task-project">
           Projeto <span className="form-required">*</span>
         </label>
@@ -385,7 +385,7 @@ export default function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             </option>
           ))}
         </select>
-      </div>*/}
+      </div>
 
       {/* Datas (linha dupla) */}
       <div className="form-row">
