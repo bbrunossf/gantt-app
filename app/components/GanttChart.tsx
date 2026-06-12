@@ -335,10 +335,11 @@ export default function GanttChart({
       date_format: 'dd/mm/yy',
       infinite_padding: false,
       padding: 6,
-      container_height: 'auto',
       bar_height: 20, //min 10, max 100, padrao 30
       column_width: 80,
       lines: 'both',
+      start_date: new Date('2026-05-05'),
+      container_height: 'auto',
       readonly_progress: true,
       // holidays: {
       //   '#fffddb': HOLIDAYS,

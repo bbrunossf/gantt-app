@@ -97,8 +97,28 @@ export default function GanttPage() {
     new Set()
   );
 
-  // Tarefas filtradas por recurso ou por projeto: sempre inclui as barras de projeto
+  // Conjunto de projectIds que possuem ao menos uma tarefa com o recurso selecionado
+  const resourceMatchingProjectIds = useMemo(() => {
+    if (selectedResources.size === 0) return null; // null = sem filtro ativo
+    const ids = new Set<string>();
+    for (const t of tasks) {
+      if (
+        !t.id.startsWith("project-") &&
+        t.resource &&
+        selectedResources.has(t.resource) &&
+        t.projectId
+      ) {
+        ids.add(t.projectId);
+      }
+    }
+    return ids;
+  }, [tasks, selectedResources]);
+
+
+  // Tarefas filtradas por recurso ou por projeto
   const filteredTasks = useMemo(() => {
+    const noResourceFilter = resourceMatchingProjectIds === null;
+
     return tasks.filter((t) => {
       const isProjectBar = t.id.startsWith("project-");
 
@@ -109,15 +129,19 @@ export default function GanttPage() {
 
       if (!passesProjectFilter) return false;
 
-      // Filtro de recursos: vazio = todos; barras de projeto sempre passam
-      const passesResourceFilter =
-        selectedResources.size === 0 ||
-        isProjectBar ||
-        (t.resource && selectedResources.has(t.resource));
+      // Filtro de recursos
+      if (noResourceFilter) return true;
 
-      return passesResourceFilter;
+      if (isProjectBar) {
+        // Barras de projeto só aparecem se possuem tarefas com o recurso
+        return t.projectId ? resourceMatchingProjectIds.has(t.projectId) : false;
+      }
+
+      // Barras de tarefa: precisam ter o recurso selecionado
+      return !!t.resource && selectedResources.has(t.resource);
     });
-  }, [tasks, selectedResources, selectedProjects]);
+  }, [tasks, selectedResources, selectedProjects, resourceMatchingProjectIds]);
+
 
 
   // Estado de abertura do dropdown
